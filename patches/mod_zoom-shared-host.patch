@@ -1,0 +1,214 @@
+# mod_zoom shared-host patch (BTI LMS)
+#
+# Location: moodle/patches/mod_zoom-shared-host.patch
+# (kept next to the Moodle Docker stack — apply against moodle/public/mod/zoom)
+#
+# WHY THIS EXISTS
+# ---------------
+# Upstream mod_zoom (v5.5.0) requires every Moodle user who creates a Zoom
+# activity to have their own licensed Zoom account (matched by email). BTI LMS
+# uses a single shared Zoom host (brianmbogo03@gmail.com) for all meetings so
+# instructors do not each need Zoom licenses.
+#
+# This patch adds admin setting zoom/sharedhostemail. When set, meeting
+# creation/update/recreate always host under that Zoom user. view.php still
+# uses zoom_get_user_id() so Start vs Join is not incorrectly granted to
+# every logged-in user.
+#
+# REAPPLY ON PLUGIN UPGRADES
+# --------------------------
+# Copying a fresh mod_zoom release into moodle/public/mod/zoom will wipe these
+# edits. After any upgrade, re-apply this patch (or re-merge the equivalent
+# changes) and confirm zoom/sharedhostemail is still set in site config.
+#
+# Files touched:
+#   mod/zoom/locallib.php
+#   mod/zoom/mod_form.php
+#   mod/zoom/recreate.php
+#   mod/zoom/lib.php
+#   mod/zoom/settings.php
+#   mod/zoom/lang/en/zoom.php
+#
+# Error behaviour when shared host is missing:
+#   Instructor sees zoomerr_sharedhostnotfound — a clear Moodle message naming
+#   the configured email and pointing admins to Connection settings. No raw
+#   Zoom API error is shown for this case.
+#
+--- a/mod/zoom/locallib.php
++++ b/mod/zoom/locallib.php
+@@ -415,6 +415,78 @@ function zoom_get_user_id($required = true) {
+     return $zoomuserid;
+ }
+ 
++/**
++ * Shared Zoom host email from admin settings (empty = disabled).
++ *
++ * @return string|null
++ */
++function zoom_get_shared_host_email() {
++    $email = trim((string) get_config('zoom', 'sharedhostemail'));
++    return $email !== '' ? $email : null;
++}
++
++/**
++ * Zoom user ID to use as meeting host when creating/recreating meetings.
++ *
++ * If zoom/sharedhostemail is set, always use that account; otherwise the
++ * currently logged-in Moodle user (upstream behaviour).
++ *
++ * Intentionally separate from zoom_get_user_id() so view.php host checks
++ * still reflect the actual Moodle user.
++ *
++ * @param bool $required If true, throw if the host Zoom user is missing.
++ * @return string|false
++ */
++function zoom_get_meeting_host_user_id($required = true) {
++    $shared = zoom_get_shared_host_email();
++    if ($shared === null) {
++        return zoom_get_user_id($required);
++    }
++
++    $cache = cache::make('mod_zoom', 'zoomid');
++    $cachekey = 'sharedhost:' . strtolower($shared);
++    if (!($zoomuserid = $cache->get($cachekey))) {
++        $zoomuserid = false;
++        try {
++            $zoomuser = zoom_get_user($shared);
++            if ($zoomuser !== false && isset($zoomuser->id) && ($zoomuser->id !== false)) {
++                $zoomuserid = $zoomuser->id;
++                $cache->set($cachekey, $zoomuserid);
++            }
++            if ($required && $zoomuser === false) {
++                throw new moodle_exception('zoomerr_sharedhostnotfound', 'mod_zoom', '', $shared);
++            }
++        } catch (moodle_exception $error) {
++            if ($required) {
++                throw $error;
++            }
++        }
++    }
++
++    return $zoomuserid;
++}
++
++/**
++ * Apply the configured shared Zoom host to a meeting object, or throw clearly.
++ *
++ * @param stdClass $zoom Meeting data from the form / recreate flow.
++ * @return void
++ */
++function zoom_apply_shared_host(stdClass $zoom) {
++    $shared = zoom_get_shared_host_email();
++    if ($shared === null) {
++        return;
++    }
++
++    $shareduser = zoom_get_user($shared);
++    if ($shareduser === false || empty($shareduser->id)) {
++        throw new moodle_exception('zoomerr_sharedhostnotfound', 'mod_zoom', '', $shared);
++    }
++
++    $zoom->host_id = $shareduser->id;
++    $zoom->schedule_for = $shared;
++}
++
+ /**
+  * Get the Zoom meeting security settings, including meeting password requirements of the user's master account.
+  *
+--- a/mod/zoom/mod_form.php
++++ b/mod/zoom/mod_form.php
+@@ -63,15 +63,26 @@ class mod_zoom_mod_form extends moodleform_mod {
+ 
+         $isnew = empty($this->_cm);
+ 
+-        $zoomuserid = zoom_get_user_id(false);
++        // Prefer shared host when configured so instructors without Zoom
++        // accounts can still create meetings.
++        $zoomuserid = zoom_get_meeting_host_user_id(false);
+ 
+-        // If creating a new instance, but the Zoom user does not exist.
++        // If creating a new instance, but the Zoom host user does not exist.
+         if ($isnew && $zoomuserid === false) {
+-            // Assume user is using Zoom for the first time.
+-            $errstring = 'zoomerr_usernotfound';
+-            // After they set up their account, the user should continue to the page they were on.
+-            $nexturl = $PAGE->url;
+-            zoom_fatal_error($errstring, 'mod_zoom', $nexturl, $config->zoomurl);
++            $shared = zoom_get_shared_host_email();
++            if ($shared !== null) {
++                // Shared host misconfigured — show a clear admin-facing message.
++                $errstring = 'zoomerr_sharedhostnotfound';
++                $erra = $shared;
++            } else {
++                // Assume user is using Zoom for the first time.
++                $errstring = 'zoomerr_usernotfound';
++                $erra = $config->zoomurl;
++            }
++            // After they set up their account, the user should continue to the page they were on.
++            $nexturl = $PAGE->url;
++            zoom_fatal_error($errstring, 'mod_zoom', $nexturl, $erra);
+         }
+ 
+         // Array of emails and proper names of Moodle users in this course that
+--- a/mod/zoom/recreate.php
++++ b/mod/zoom/recreate.php
+@@ -38,9 +38,8 @@ require_capability('mod/zoom:addinstance', $context);
+ $PAGE->set_url('/mod/zoom/recreate.php', ['id' => $cm->id]);
+ 
+ // Create a new meeting with Zoom API to replace the missing one.
+-// We will use the logged-in user's Zoom account to recreate,
+-// in case the meeting's former owner no longer exists on Zoom.
+-$zoom->host_id = zoom_get_user_id();
++// Use shared host when configured; otherwise the logged-in user's Zoom account.
++$zoom->host_id = zoom_get_meeting_host_user_id();
+ 
+ $trackingfields = $DB->get_records('zoom_meeting_tracking_fields', ['meeting_id' => $zoom->id]);
+--- a/mod/zoom/lib.php
++++ b/mod/zoom/lib.php
+@@ -98,6 +98,10 @@ function zoom_add_instance(stdClass $zoom, ?mod_zoom_mod_form $mform = null) {
+         $zoom->breakoutrooms = $breakoutrooms['zoom'];
+     }
+ 
++    // Force shared host if configured (defence in depth vs form tampering).
++    zoom_apply_shared_host($zoom);
++
+     $response = zoom_webservice()->create_meeting($zoom, $zoom->coursemodule);
+     $zoom = populate_zoom_from_response($zoom, $response);
+@@ -185,6 +189,9 @@ function zoom_update_instance(stdClass $zoom, ?mod_zoom_mod_form $mform = null) {
+     $zoom->meeting_id = $updatedzoomrecord->meeting_id;
+     $zoom->webinar = $updatedzoomrecord->webinar;
+ 
++    // Force shared host if configured (defence in depth vs form tampering).
++    zoom_apply_shared_host($zoom);
++
+     // Update meeting on Zoom.
+     try {
+         zoom_webservice()->update_meeting($zoom, $zoom->coursemodule);
+--- a/mod/zoom/settings.php
++++ b/mod/zoom/settings.php
+@@ -128,6 +128,16 @@ if ($ADMIN->fulltree) {
+     );
+     $settings->add($apiidentifier);
+ 
++    $sharedhostemail = new admin_setting_configtext(
++        'zoom/sharedhostemail',
++        get_string('sharedhostemail', 'mod_zoom'),
++        get_string('sharedhostemail_desc', 'mod_zoom'),
++        '',
++        PARAM_EMAIL
++    );
++    $settings->add($sharedhostemail);
++
+     // License settings.
+     $settings->add(new admin_setting_heading(
+         'zoom/licensesettings',
+--- a/mod/zoom/lang/en/zoom.php
++++ b/mod/zoom/lang/en/zoom.php
+@@ -56,6 +56,9 @@ $string['apiidentifier'] = 'Zoom API Identifier';
+ $string['apiidentifier_desc'] = 'The identifier field to use when making a call to the Zoom API';
+ $string['apiurl'] = 'Zoom API url';
+ $string['apiurl_desc'] = '';
++$string['sharedhostemail'] = 'Shared Zoom host email';
++$string['sharedhostemail_desc'] = 'If set, all Zoom meetings created from Moodle are hosted under this Zoom user, regardless of which Moodle user creates the activity. Leave empty to use the creating user\'s own Zoom account (default plugin behaviour).';
++$string['zoomerr_sharedhostnotfound'] = 'The shared Zoom host account configured by the site administrator ({$a}) could not be found in Zoom. Please ask an administrator to check the "Shared Zoom host email" setting under Site administration → Plugins → Activity modules → Zoom meeting (Connection settings), and confirm that this email matches an active user in the Zoom account.';
+ $string['audio_both'] = 'Computer audio and Telephone';

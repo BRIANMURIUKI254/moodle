@@ -1,0 +1,51 @@
+services:
+  db:
+    image: mariadb:11.4
+    container_name: moodle-db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: rootpass123
+      MARIADB_DATABASE: moodle
+      MARIADB_USER: moodleuser
+      MARIADB_PASSWORD: moodlepass123
+    volumes:
+      - db_data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --innodb-file-per-table=1
+
+  moodle:
+    build: .
+    container_name: moodle-app
+    restart: unless-stopped
+    depends_on:
+      - db
+    ports:
+      - "8081:80"
+    volumes:
+      - .:/var/www/html
+      - moodledata:/var/www/moodledata
+
+  moodle-cron:
+    build: .
+    container_name: moodle-cron
+    restart: unless-stopped
+    depends_on:
+      - db
+      - moodle
+    command: ["/bin/sh", "/var/www/html/scripts/run-cron.sh"]
+    environment:
+      MOODLE_CRON_INTERVAL: "60"
+    volumes:
+      - .:/var/www/html
+      - moodledata:/var/www/moodledata
+
+  mailpit:
+    image: axllent/mailpit
+    container_name: moodle-mailpit
+    restart: unless-stopped
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
+volumes:
+  db_data:
+  moodledata:

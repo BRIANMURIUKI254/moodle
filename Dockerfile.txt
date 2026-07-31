@@ -1,0 +1,14 @@
+FROM php:8.2-apache
+
+RUN apt-get update && apt-get install -y \
+    libzip-dev libpng-dev libjpeg-dev libfreetype6-dev \
+    libxml2-dev libxslt1-dev libicu-dev libpspell-dev \
+    libcurl4-openssl-dev unzip git \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j$(nproc) \
+        gd zip intl xsl soap mysqli pdo pdo_mysql \
+        opcache curl xml mbstring exif pspell
+
+RUN a2enmod rewrite
+
+WORKDIR /var/www/html
