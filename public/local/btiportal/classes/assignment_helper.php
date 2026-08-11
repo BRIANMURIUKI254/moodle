@@ -31,7 +31,10 @@ class assignment_helper {
         string $intro = '',
         float $grademax = 100.0,
         int $introattachments = 0,
-        string $category = ''
+        string $category = '',
+        int $allowsubmissionsfromdate = 0,
+        int $duedate = 0,
+        int $cutoffdate = 0
     ): array {
         global $DB;
 
@@ -63,6 +66,19 @@ class assignment_helper {
             $grademax = 100.0;
         }
 
+        $allowfrom = max(0, $allowsubmissionsfromdate);
+        $due = max(0, $duedate);
+        $cutoff = max(0, $cutoffdate);
+        if ($cutoff <= 0 && $due > 0) {
+            $cutoff = $due;
+        }
+        if ($due > 0 && $allowfrom > 0 && $due < $allowfrom) {
+            throw new \invalid_parameter_exception('Due time must be after the open (start) time');
+        }
+        if ($cutoff > 0 && $allowfrom > 0 && $cutoff < $allowfrom) {
+            throw new \invalid_parameter_exception('Close time must be after the open (start) time');
+        }
+
         $fromform = (object)[
             'name' => $name,
             'course' => $courseid,
@@ -78,10 +94,10 @@ class assignment_helper {
             'sendnotifications' => 0,
             'sendlatenotifications' => 0,
             'sendstudentnotifications' => 0,
-            'duedate' => 0,
-            'allowsubmissionsfromdate' => 0,
+            'duedate' => $due,
+            'allowsubmissionsfromdate' => $allowfrom,
             'grade' => $grademax,
-            'cutoffdate' => 0,
+            'cutoffdate' => $cutoff,
             'gradingduedate' => 0,
             'teamsubmission' => 0,
             'requireallteammemberssubmit' => 0,
@@ -152,6 +168,9 @@ class assignment_helper {
             'grademax' => (float)$gi->grademax,
             'mapped' => true,
             'category' => $category,
+            'allowsubmissionsfromdate' => $allowfrom,
+            'duedate' => $due,
+            'cutoffdate' => $cutoff,
         ];
     }
 }

@@ -256,6 +256,13 @@ $functions = [
         'capabilities'=> 'moodle/course:update',
         'ajax'        => true,
     ],
+    'local_btiportal_get_portal_images' => [
+        'classname'   => 'local_btiportal\\external\\get_portal_images',
+        'methodname'  => 'execute',
+        'description' => 'Return portal course and unit cover image URLs for enrolled/visible courses.',
+        'type'        => 'read',
+        'ajax'        => true,
+    ],
     'local_btiportal_save_catalogue_image' => [
         'classname'   => 'local_btiportal\\external\\save_catalogue_image',
         'methodname'  => 'execute',
@@ -1340,6 +1347,7 @@ $services = [
             'local_btiportal_create_document_assignment',
             'local_btiportal_get_assignment_meta',
             'local_btiportal_save_portal_image',
+            'local_btiportal_get_portal_images',
             'local_btiportal_save_catalogue_image',
             'local_btiportal_delete_academic_course_unit',
             'local_btiportal_create_my_course_request',

@@ -262,41 +262,44 @@ class student_portal_helper {
         $history = student_academic_history_helper::list_for_user($userid, null);
 
         $now = time();
-        $daystart = strtotime('today', $now);
-        $dayend = strtotime('tomorrow', $now) - 1;
-        $weekstart = strtotime('monday this week', $now);
-        $weekend = strtotime('sunday this week 23:59:59', $now);
+        $daystart = strtotime('today', $now) - DAYSECS;
+        $dayend = strtotime('tomorrow', $now) - 1 + DAYSECS;
+        $weekstart = strtotime('monday this week', $now) - DAYSECS;
+        $weekend = strtotime('sunday this week 23:59:59', $now) + DAYSECS;
+        $todaykey = userdate($now, '%Y-%m-%d');
 
-        $todaysessions = timetable_helper::list_for_student($userid, [
+        $candidatetoday = timetable_helper::list_for_student($userid, [
             'datestart' => (int)$daystart,
             'dateend' => (int)$dayend,
-            'status' => 'published',
             'academicyearid' => $yearid,
-            'semesterid' => $semid,
         ]);
-        // Also include scheduled synonym if statuses differ in data.
-        if (!$todaysessions) {
-            $todaysessions = timetable_helper::list_for_student($userid, [
-                'datestart' => (int)$daystart,
-                'dateend' => (int)$dayend,
-                'academicyearid' => $yearid,
-                'semesterid' => $semid,
-            ]);
-            $todaysessions = array_values(array_filter(
-                $todaysessions,
-                static fn($s) => !in_array(($s['status'] ?? ''), ['cancelled', 'archived', 'draft'], true)
-            ));
-        }
+        $todaysessions = array_values(array_filter(
+            $candidatetoday,
+            static function ($s) use ($todaykey) {
+                $status = strtolower((string)($s['status'] ?? ''));
+                if (in_array($status, ['cancelled', 'archived', 'draft'], true)) {
+                    return false;
+                }
+                return userdate((int)($s['sessiondate'] ?? 0), '%Y-%m-%d') === $todaykey;
+            }
+        ));
 
         $weeksessions = timetable_helper::list_for_student($userid, [
             'datestart' => (int)$weekstart,
             'dateend' => (int)$weekend,
             'academicyearid' => $yearid,
-            'semesterid' => $semid,
         ]);
         $weeksessions = array_values(array_filter(
             $weeksessions,
-            static fn($s) => !in_array(($s['status'] ?? ''), ['cancelled', 'archived', 'draft'], true)
+            static function ($s) use ($weekstart, $weekend) {
+                $status = strtolower((string)($s['status'] ?? ''));
+                if (in_array($status, ['cancelled', 'archived', 'draft'], true)) {
+                    return false;
+                }
+                // Keep sessions whose local calendar day falls in this week.
+                $day = strtotime(userdate((int)($s['sessiondate'] ?? 0), '%Y-%m-%d'));
+                return $day >= strtotime('monday this week') && $day <= strtotime('sunday this week 23:59:59');
+            }
         ));
 
         $years = academic_calendar_helper::list_years('active');
@@ -338,7 +341,7 @@ class student_portal_helper {
             'username' => (string)$user->username,
             'idnumber' => (string)($user->idnumber ?? ''),
             'phone1' => (string)($user->phone1 ?? ''),
-            'profileimageurl' => '',
+            'profileimageurl' => self::profile_image_url($user),
             'hasprofile' => $profile ? 1 : 0,
             'profile' => $profile,
             'deliverystatus' => $deliverystatus,
@@ -428,5 +431,41 @@ class student_portal_helper {
         $plan['warning'] = (string)($plan['warning'] ?? '');
         $plan['canenrol'] = !empty($plan['canenrol']);
         return $plan;
+    }
+
+    /**
+     * Absolute Moodle profile picture URL for portal avatars (empty when default silhouette).
+     */
+    private static function profile_image_url(\stdClass $user): string {
+        global $PAGE;
+
+        if (empty($user->picture)) {
+            return '';
+        }
+
+        try {
+            $userpicture = new \user_picture($user);
+            $userpicture->size = 1; // f1
+            $url = $userpicture->get_url($PAGE);
+            return $url ? $url->out(false) : '';
+        } catch (\Throwable $e) {
+            // Fall back to pluginfile construction when $PAGE is incomplete in WS context.
+            try {
+                $context = \context_user::instance((int)$user->id, IGNORE_MISSING);
+                if (!$context) {
+                    return '';
+                }
+                return \moodle_url::make_pluginfile_url(
+                    $context->id,
+                    'user',
+                    'icon',
+                    null,
+                    '/',
+                    'f1'
+                )->out(false);
+            } catch (\Throwable $ignored) {
+                return '';
+            }
+        }
     }
 }

@@ -2050,5 +2050,29 @@ function xmldb_local_btiportal_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026080607, 'local', 'btiportal');
     }
 
+    if ($oldversion < 2026081101) {
+        // 1.9.10 — expose saved course/unit cover images to the portal (get_portal_images).
+        external_update_descriptions('local_btiportal');
+        $fns = ['local_btiportal_get_portal_images'];
+        foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+            $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+            if (!$service) {
+                continue;
+            }
+            foreach ($fns as $fn) {
+                if (!$DB->record_exists('external_services_functions', [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $fn,
+                ])) {
+                    $DB->insert_record('external_services_functions', (object) [
+                        'externalserviceid' => $service->id,
+                        'functionname' => $fn,
+                    ]);
+                }
+            }
+        }
+        upgrade_plugin_savepoint(true, 2026081101, 'local', 'btiportal');
+    }
+
     return true;
 }

@@ -5,7 +5,6 @@ defined('MOODLE_INTERNAL') || die();
 
 use core_external\external_api;
 use core_external\external_function_parameters;
-use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
 use local_btiportal\assignment_helper;
@@ -33,6 +32,24 @@ class create_document_assignment extends external_api {
                 'Assessment category: CAT, EXAM, or ASSIGNMENT',
                 VALUE_REQUIRED
             ),
+            'allowsubmissionsfromdate' => new external_value(
+                PARAM_INT,
+                'Unix time when submissions open (0 = immediately)',
+                VALUE_DEFAULT,
+                0
+            ),
+            'duedate' => new external_value(
+                PARAM_INT,
+                'Unix time when assignment is due (0 = no due date)',
+                VALUE_DEFAULT,
+                0
+            ),
+            'cutoffdate' => new external_value(
+                PARAM_INT,
+                'Unix time when submissions lock (0 = use duedate)',
+                VALUE_DEFAULT,
+                0
+            ),
         ]);
     }
 
@@ -43,7 +60,10 @@ class create_document_assignment extends external_api {
         string $intro = '',
         float $grademax = 100,
         int $introattachments = 0,
-        string $category = ''
+        string $category = '',
+        int $allowsubmissionsfromdate = 0,
+        int $duedate = 0,
+        int $cutoffdate = 0
     ): array {
         global $USER;
 
@@ -55,6 +75,9 @@ class create_document_assignment extends external_api {
             'grademax' => $grademax,
             'introattachments' => $introattachments,
             'category' => $category,
+            'allowsubmissionsfromdate' => $allowsubmissionsfromdate,
+            'duedate' => $duedate,
+            'cutoffdate' => $cutoffdate,
         ]);
 
         $courseid = (int)$params['courseid'];
@@ -64,6 +87,9 @@ class create_document_assignment extends external_api {
         $grademax = (float)$params['grademax'];
         $introattachments = (int)$params['introattachments'];
         $category = (string)$params['category'];
+        $allowfrom = (int)$params['allowsubmissionsfromdate'];
+        $due = (int)$params['duedate'];
+        $cutoff = (int)$params['cutoffdate'];
 
         $context = \context_course::instance($courseid);
         self::validate_context($context);
@@ -84,7 +110,10 @@ class create_document_assignment extends external_api {
             $intro,
             $grademax,
             $introattachments,
-            $category
+            $category,
+            $allowfrom,
+            $due,
+            $cutoff
         );
     }
 
@@ -100,6 +129,9 @@ class create_document_assignment extends external_api {
             'grademax' => new external_value(PARAM_FLOAT, 'Max grade'),
             'mapped' => new external_value(PARAM_BOOL, 'True when grade item mapped to unit'),
             'category' => new external_value(PARAM_ALPHA, 'CAT, EXAM, or ASSIGNMENT'),
+            'allowsubmissionsfromdate' => new external_value(PARAM_INT, 'Open time', VALUE_OPTIONAL),
+            'duedate' => new external_value(PARAM_INT, 'Due time', VALUE_OPTIONAL),
+            'cutoffdate' => new external_value(PARAM_INT, 'Lock time', VALUE_OPTIONAL),
         ]);
     }
 }

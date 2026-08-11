@@ -313,9 +313,16 @@ class timetable_helper {
         }
         $where .= ' AND (' . implode(' OR ', $parts) . ')';
 
-        foreach (['courseunitid', 'moodlecourseid', 'academicyearid', 'semesterid'] as $key) {
+        foreach (['courseunitid', 'moodlecourseid'] as $key) {
             if (!empty($filters[$key])) {
                 $where .= " AND {$key} = :{$key}";
+                $params[$key] = (int)$filters[$key];
+            }
+        }
+        // Period filters: match the requested period OR entries left unscoped (0).
+        foreach (['academicyearid', 'semesterid'] as $key) {
+            if (!empty($filters[$key])) {
+                $where .= " AND ({$key} = :{$key} OR {$key} = 0)";
                 $params[$key] = (int)$filters[$key];
             }
         }
@@ -584,13 +591,41 @@ class timetable_helper {
     }
 
     public static function format(\stdClass $row): array {
+        global $DB;
+
+        $lecturerid = (int)$row->lecturerid;
+        $lecturername = '';
+        if ($lecturerid > 0) {
+            $user = $DB->get_record('user', ['id' => $lecturerid, 'deleted' => 0], 'id, firstname, lastname', IGNORE_MISSING);
+            if ($user) {
+                $lecturername = fullname($user);
+            }
+        } else if ((int)$row->courseunitid > 0
+            && $DB->get_manager()->table_exists('local_btiportal_course_unit_teacher')) {
+            // Fall back to the primary teacher assigned to this course unit.
+            $teacher = $DB->get_record_sql(
+                "SELECT u.id, u.firstname, u.lastname
+                   FROM {local_btiportal_course_unit_teacher} cut
+                   JOIN {user} u ON u.id = cut.userid AND u.deleted = 0
+                  WHERE cut.courseunitid = :cuid AND cut.isprimary = 1
+               ORDER BY cut.id ASC",
+                ['cuid' => (int)$row->courseunitid],
+                IGNORE_MULTIPLE
+            );
+            if ($teacher) {
+                $lecturerid = (int)$teacher->id;
+                $lecturername = fullname($teacher);
+            }
+        }
+
         return [
             'id' => (int)$row->id,
             'departmentid' => (int)$row->departmentid,
             'programmeid' => (int)$row->programmeid,
             'courseunitid' => (int)$row->courseunitid,
             'moodlecourseid' => (int)$row->moodlecourseid,
-            'lecturerid' => (int)$row->lecturerid,
+            'lecturerid' => $lecturerid,
+            'lecturername' => $lecturername,
             'academicyearid' => (int)$row->academicyearid,
             'semesterid' => (int)$row->semesterid,
             'sessiondate' => (int)$row->sessiondate,
@@ -620,6 +655,7 @@ class timetable_helper {
             'courseunitid' => new \core_external\external_value(PARAM_INT, 'courseunitid'),
             'moodlecourseid' => new \core_external\external_value(PARAM_INT, 'moodlecourseid'),
             'lecturerid' => new \core_external\external_value(PARAM_INT, 'lecturerid'),
+            'lecturername' => new \core_external\external_value(PARAM_TEXT, 'lecturer display name', VALUE_OPTIONAL),
             'academicyearid' => new \core_external\external_value(PARAM_INT, 'academicyearid'),
             'semesterid' => new \core_external\external_value(PARAM_INT, 'semesterid'),
             'sessiondate' => new \core_external\external_value(PARAM_INT, 'sessiondate unix day'),
