@@ -27,10 +27,10 @@ function xmldb_local_btizoomapi_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026072100, 'local', 'btizoomapi');
     }
 
-    if ($oldversion < 2026072200) {
-        // Refresh WS signature so optional cmid is registered.
+    if ($oldversion < 2026080500) {
+        // Refresh WS description so optional sectionid is registered.
         external_update_descriptions('local_btizoomapi');
-        upgrade_plugin_savepoint(true, 2026072200, 'local', 'btizoomapi');
+        upgrade_plugin_savepoint(true, 2026080500, 'local', 'btizoomapi');
     }
 
     return true;

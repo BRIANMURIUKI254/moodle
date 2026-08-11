@@ -16,6 +16,7 @@ $string['invalidassignmentcategory'] = 'Invalid assignment category "{$a}". Use 
 $string['inactivealertadminemails'] = 'Inactive student alert admin emails';
 $string['inactivealertadminemails_desc'] = 'One or more email addresses that should receive inactive student alerts. Separate addresses with commas, semicolons, spaces, or new lines.';
 $string['task_sendinactivealerts'] = 'Send inactive student alerts';
+$string['task_syncstudentsemesters'] = 'Unlock next semester for students when timeframe ends';
 $string['inactivealertadminrecipientname'] = 'Portal admin';
 $string['inactivealertadminsubject'] = '{$a->student} has not logged into {$a->course} since {$a->lastaccess}.';
 $string['inactivealertadminbody'] = 'Student: {$a->student}
@@ -33,3 +34,34 @@ Please log back in and continue with your course as soon as you can.
 Course link: {$a->courseurl}
 
 If you are having trouble accessing the course, please contact your administrator or tutor.';
+
+// Academic structure capabilities (Phase 2).
+$string['btiportal:manageacademic'] = 'Manage academic structure (programmes, curricula, years, semesters, course units)';
+$string['btiportal:viewacademic'] = 'View academic structure';
+$string['btiportal:managetimetable'] = 'Manage operational timetable entries (department-scoped for Department Leaders)';
+$string['btiportal:managedepartmentcalendar'] = 'Manage department calendar events';
+$string['btiportal:managedepartmentnotifications'] = 'Manage department-scoped operational notifications';
+$string['btiportal:managedepartmentannouncements'] = 'Manage department-scoped announcements';
+$string['btiportal:viewdepartmentreports'] = 'View department-scoped academic reports';
+$string['btiportal:viewdepartmentaudit'] = 'View department-scoped operational audit records';
+$string['academicenvelope'] = 'Academic API response envelope';
+
+// Academic catalogue (Phase 3).
+$string['school'] = 'School';
+$string['schools'] = 'Schools';
+$string['department'] = 'Department';
+$string['departments'] = 'Departments';
+$string['yearofstudy'] = 'Year of study';
+$string['curriculumsemester'] = 'Curriculum semester';
+$string['lecturerdepartment'] = 'Lecturer department membership';
+$string['studentacademicprofile'] = 'Student academic profile';
+$string['stafforgassignment'] = 'Staff organisational placement';
+$string['awardtype'] = 'Award type';
+$string['admissionstatus'] = 'Admission status';
+$string['academicstatus'] = 'Academic status';
+$string['statusactive'] = 'Active';
+$string['statusinactive'] = 'Inactive';
+$string['statusarchived'] = 'Archived';
+$string['schoolnotactive'] = 'School is not active';
+$string['departmentnotfound'] = 'Department not found';
+$string['studentprofileexists'] = 'This user already has a student academic profile';

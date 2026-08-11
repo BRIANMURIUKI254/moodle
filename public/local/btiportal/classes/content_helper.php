@@ -124,28 +124,64 @@ class content_helper {
         int $courseid,
         int $authorid,
         string $title,
-        string $body
+        string $body,
+        string $scope = 'course',
+        int $departmentid = 0
     ): array {
         global $DB;
 
-        $id = $DB->insert_record('local_btiportal_announcement', (object) [
+        $scope = self::normalize_content_scope($scope, $courseid, $departmentid);
+        $record = (object) [
             'courseid' => $courseid,
             'authorid' => $authorid,
             'title' => $title,
             'body' => $body,
             'timecreated' => time(),
-        ]);
+        ];
+        $columns = $DB->get_columns('local_btiportal_announcement');
+        if (isset($columns['departmentid'])) {
+            $record->departmentid = $departmentid;
+        }
+        if (isset($columns['scope'])) {
+            $record->scope = $scope;
+        }
+        if (isset($columns['status'])) {
+            $record->status = 'published';
+        }
 
-        // Also put on the course calendar so enrolled students see it on /calendar.
-        $event = self::create_course_calendar_event(
-            $courseid,
-            'Announcement: ' . $title,
-            $body,
-            time(),
-            0
-        );
+        $id = $DB->insert_record('local_btiportal_announcement', $record);
+
+        // Also put on the course/site calendar so enrolled students see it on /calendar.
+        if ($courseid <= 1 || $scope === 'university' || $scope === 'department') {
+            $event = self::create_site_calendar_event(
+                'Announcement: ' . $title,
+                $body,
+                time(),
+                0
+            );
+        } else {
+            $event = self::create_course_calendar_event(
+                $courseid,
+                'Announcement: ' . $title,
+                $body,
+                time(),
+                0
+            );
+        }
 
         $DB->set_field('local_btiportal_announcement', 'eventid', $event->id, ['id' => $id]);
+
+        if (class_exists(audit_helper::class)) {
+            audit_helper::log([
+                'action' => 'announcement_publish',
+                'entitytype' => 'announcement',
+                'entityid' => $id,
+                'departmentid' => $departmentid,
+                'after' => ['scope' => $scope, 'courseid' => $courseid, 'title' => $title],
+                'result' => 'success',
+                'sourcemodule' => 'content',
+            ], $authorid);
+        }
 
         return self::format_announcement($DB->get_record('local_btiportal_announcement', ['id' => $id], '*', MUST_EXIST));
     }
@@ -267,6 +303,17 @@ class content_helper {
         global $DB;
         $author = $DB->get_record('user', ['id' => $r->authorid], 'id,firstname,lastname');
         $course = $DB->get_record('course', ['id' => $r->courseid], 'id,shortname,fullname');
+        $departmentid = (int)($r->departmentid ?? 0);
+        $deptname = '';
+        $deptcode = '';
+        if ($departmentid > 0) {
+            $dept = $DB->get_record('local_btiportal_department', ['id' => $departmentid], 'id,code,name');
+            if ($dept) {
+                $deptcode = (string)$dept->code;
+                $deptname = (string)$dept->name;
+            }
+        }
+        $scope = (string)($r->scope ?? (($departmentid > 0) ? 'department' : (((int)$r->courseid > 1) ? 'course' : 'university')));
         return [
             'id' => (int)$r->id,
             'courseid' => (int)$r->courseid,
@@ -278,6 +325,11 @@ class content_helper {
             'body' => $r->body,
             'eventid' => (int)($r->eventid ?? 0),
             'timecreated' => (int)$r->timecreated,
+            'departmentid' => $departmentid,
+            'departmentcode' => $deptcode,
+            'departmentname' => $deptname,
+            'scope' => $scope,
+            'status' => (string)($r->status ?? 'published'),
         ];
     }
 
@@ -348,11 +400,14 @@ class content_helper {
         string $body,
         int $timestart,
         int $timeduration = 0,
-        int $draftitemid = 0
+        int $draftitemid = 0,
+        string $scope = 'course',
+        int $departmentid = 0
     ): array {
         global $DB, $CFG;
 
-        $id = $DB->insert_record('local_btiportal_event', (object) [
+        $scope = self::normalize_content_scope($scope, $courseid, $departmentid);
+        $record = (object) [
             'courseid' => $courseid,
             'authorid' => $authorid,
             'title' => $title,
@@ -363,7 +418,19 @@ class content_helper {
             'imageurl' => '',
             'filename' => '',
             'timecreated' => time(),
-        ]);
+        ];
+        $columns = $DB->get_columns('local_btiportal_event');
+        if (isset($columns['departmentid'])) {
+            $record->departmentid = $departmentid;
+        }
+        if (isset($columns['scope'])) {
+            $record->scope = $scope;
+        }
+        if (isset($columns['status'])) {
+            $record->status = 'published';
+        }
+
+        $id = $DB->insert_record('local_btiportal_event', $record);
 
         $imagehtml = '';
         if ($draftitemid > 0) {
@@ -406,7 +473,37 @@ class content_helper {
         }
         $DB->set_field('local_btiportal_event', 'eventid', $event->id, ['id' => $id]);
 
+        if (class_exists(audit_helper::class)) {
+            audit_helper::log([
+                'action' => 'event_publish',
+                'entitytype' => 'event',
+                'entityid' => $id,
+                'departmentid' => $departmentid,
+                'after' => ['scope' => $scope, 'courseid' => $courseid, 'title' => $title],
+                'result' => 'success',
+                'sourcemodule' => 'content',
+            ], $authorid);
+        }
+
         return self::format_event($DB->get_record('local_btiportal_event', ['id' => $id], '*', MUST_EXIST));
+    }
+
+    /**
+     * Normalize content publication scope to supported values only.
+     */
+    public static function normalize_content_scope(string $scope, int $courseid, int $departmentid): string {
+        $scope = strtolower(trim($scope));
+        $allowed = ['university', 'department', 'course'];
+        if (!in_array($scope, $allowed, true)) {
+            if ($departmentid > 0) {
+                return 'department';
+            }
+            if ($courseid > 1) {
+                return 'course';
+            }
+            return 'university';
+        }
+        return $scope;
     }
 
     public static function list_events_for_courses(array $courseids, int $limit = 100): array {
@@ -757,6 +854,17 @@ class content_helper {
         $author = $DB->get_record('user', ['id' => $r->authorid], 'id,firstname,lastname');
         $course = $DB->get_record('course', ['id' => $r->courseid], 'id,shortname,fullname');
         $sitewide = (int)$r->courseid <= 1;
+        $departmentid = (int)($r->departmentid ?? 0);
+        $deptname = '';
+        $deptcode = '';
+        if ($departmentid > 0) {
+            $dept = $DB->get_record('local_btiportal_department', ['id' => $departmentid], 'id,code,name');
+            if ($dept) {
+                $deptcode = (string)$dept->code;
+                $deptname = (string)$dept->name;
+            }
+        }
+        $scope = (string)($r->scope ?? (($departmentid > 0) ? 'department' : ($sitewide ? 'university' : 'course')));
         return [
             'id' => (int)$r->id,
             'courseid' => (int)$r->courseid,
@@ -772,6 +880,11 @@ class content_helper {
             'imageurl' => (string)($r->imageurl ?? ''),
             'filename' => (string)($r->filename ?? ''),
             'timecreated' => (int)$r->timecreated,
+            'departmentid' => $departmentid,
+            'departmentcode' => $deptcode,
+            'departmentname' => $deptname,
+            'scope' => $scope,
+            'status' => (string)($r->status ?? 'published'),
         ];
     }
 

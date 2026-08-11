@@ -14,7 +14,10 @@
 function local_btiportal_pluginfile($course, $cm, $context, $filearea, $args, $forcedownload, array $options = []) {
     global $DB, $USER;
 
-    $allowed = ['recording', 'eventimage', 'resource', 'certificate', 'courseimage', 'unitimage'];
+    $allowed = [
+        'recording', 'eventimage', 'resource', 'certificate',
+        'courseimage', 'unitimage', 'programmeimage', 'courseunitimage',
+    ];
     if (!in_array($filearea, $allowed, true)) {
         return false;
     }
@@ -24,6 +27,17 @@ function local_btiportal_pluginfile($course, $cm, $context, $filearea, $args, $f
     $itemid = (int)array_shift($args);
     $filename = array_pop($args);
     $filepath = $args ? '/' . implode('/', $args) . '/' : '/';
+
+    if ($filearea === 'programmeimage' || $filearea === 'courseunitimage') {
+        // Catalogue covers: any logged-in portal user may view (token/pluginfile).
+        $fs = get_file_storage();
+        $file = $fs->get_file($context->id, 'local_btiportal', $filearea, $itemid, $filepath, $filename);
+        if (!$file || $file->is_directory()) {
+            return false;
+        }
+        send_stored_file($file, 0, 0, $forcedownload, $options);
+        return true;
+    }
 
     if ($filearea === 'courseimage' || $filearea === 'unitimage') {
         // Cover images: courseimage itemid=courseid; unitimage itemid=sectionid.

@@ -198,7 +198,7 @@ class inactive_student_alerts extends scheduled_task {
         $parts = preg_split('/[\s,;]+/', $raw, -1, PREG_SPLIT_NO_EMPTY);
         $emails = [];
         foreach ($parts as $email) {
-            $email = core_user::clean_field(trim(core_text::strtolower($email)), 'email');
+            $email = \core_user::clean_field(trim(\core_text::strtolower($email)), 'email');
             if ($email === '') {
                 continue;
             }

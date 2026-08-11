@@ -8,6 +8,7 @@ use core_external\external_function_parameters;
 use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
+use local_btiportal\department_auth_helper;
 
 class get_current_user_context extends external_api {
     public static function execute_parameters(): external_function_parameters {
@@ -22,11 +23,26 @@ class get_current_user_context extends external_api {
             [$USER->id]
         );
         $forcepasswordchange = (bool) get_user_preferences('auth_forcepasswordchange', false, $USER);
+        $leadership = department_auth_helper::get_leadership_departments((int)$USER->id);
+        $primarydeptid = 0;
+        foreach ($leadership as $row) {
+            if ((int)$row['isprimary'] === 1) {
+                $primarydeptid = (int)$row['departmentid'];
+                break;
+            }
+        }
+        if ($primarydeptid === 0 && $leadership) {
+            $primarydeptid = (int)$leadership[0]['departmentid'];
+        }
         return [
             'roles' => array_values($roles),
             'issiteadmin' => is_siteadmin($USER),
             'email' => $USER->email,
             'forcepasswordchange' => $forcepasswordchange,
+            'isuniversityadmin' => department_auth_helper::is_university_admin((int)$USER->id),
+            'isdepartmentleader' => !empty($leadership),
+            'primaryleadershipdepartmentid' => $primarydeptid,
+            'leadershipdepartments' => $leadership,
         ];
     }
 
@@ -36,6 +52,13 @@ class get_current_user_context extends external_api {
             'issiteadmin' => new external_value(PARAM_BOOL, 'Whether the current user is a site administrator'),
             'email' => new external_value(PARAM_EMAIL, 'User email address'),
             'forcepasswordchange' => new external_value(PARAM_BOOL, 'Whether the user must change password on next login'),
+            'isuniversityadmin' => new external_value(PARAM_BOOL, 'University academic/operational admin'),
+            'isdepartmentleader' => new external_value(PARAM_BOOL, 'Has active Department Leader assignment'),
+            'primaryleadershipdepartmentid' => new external_value(PARAM_INT, 'Primary leadership department id'),
+            'leadershipdepartments' => new external_multiple_structure(
+                new external_single_structure(department_auth_helper::leadership_structure_keys()),
+                'Active Department Leader assignments'
+            ),
         ]);
     }
 }

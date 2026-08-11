@@ -37,6 +37,13 @@ class observer {
             return;
         }
 
+        // Academic Course Units (and cascaded prereq/teacher rows) for this Moodle course.
+        try {
+            academic_course_unit_helper::delete_for_course($courseid);
+        } catch (\Throwable $e) {
+            debugging('local_btiportal course_deleted academic cleanup: ' . $e->getMessage(), DEBUG_DEVELOPER);
+        }
+
         $tables = [
             'local_btiportal_unit',
             'local_btiportal_unit_gradeitem',
@@ -45,6 +52,7 @@ class observer {
             'local_btiportal_event',
             'local_btiportal_recording',
             'local_btiportal_certificate',
+            'local_btiportal_inactive_alert',
         ];
 
         foreach ($tables as $table) {

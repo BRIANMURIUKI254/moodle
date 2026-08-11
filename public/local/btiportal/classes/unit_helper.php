@@ -56,51 +56,127 @@ class unit_helper {
     }
 
     /**
+     * Teachers mapped to Moodle topics in a course.
+     *
+     * Merges legacy local_btiportal_unit rows with active academic Course Unit
+     * teacher assignments (same sources as get_my_teaching_sections).
+     *
      * @return list<array{courseid:int, sectionid:int, teacheruserid:int, teachername:string, teacheremail:string}>
      */
     public static function get_unit_teachers(int $courseid): array {
         global $DB;
 
-        $sql = "SELECT u.courseid, u.sectionid, u.teacheruserid,
+        $bysection = [];
+
+        // First SELECT column must be unique (Moodle indexes get_records_sql by it).
+        $sql = "SELECT u.sectionid, u.courseid, u.teacheruserid,
                        usr.firstname, usr.lastname, usr.email
                   FROM {local_btiportal_unit} u
-                  JOIN {user} usr ON usr.id = u.teacheruserid
+                  JOIN {user} usr ON usr.id = u.teacheruserid AND usr.deleted = 0
                  WHERE u.courseid = ?
               ORDER BY u.sectionid ASC";
 
-        $rows = $DB->get_records_sql($sql, [$courseid]);
-        $out = [];
-        foreach ($rows as $row) {
+        foreach ($DB->get_records_sql($sql, [$courseid]) as $row) {
+            $sectionid = (int)$row->sectionid;
             $name = trim($row->firstname . ' ' . $row->lastname);
-            $out[] = [
+            $bysection[$sectionid] = [
                 'courseid' => (int)$row->courseid,
-                'sectionid' => (int)$row->sectionid,
+                'sectionid' => $sectionid,
                 'teacheruserid' => (int)$row->teacheruserid,
                 'teachername' => $name !== '' ? $name : 'Teacher',
                 'teacheremail' => (string)$row->email,
             ];
         }
-        return $out;
+
+        $dbman = $DB->get_manager();
+        if ($dbman->table_exists('local_btiportal_course_unit_teacher')
+                && $dbman->table_exists('local_btiportal_course_unit')) {
+            $academicsql = "SELECT cut.id, cu.courseid, cu.sectionid, cut.userid AS teacheruserid,
+                                   usr.firstname, usr.lastname, usr.email, cut.isprimary
+                              FROM {local_btiportal_course_unit_teacher} cut
+                              JOIN {local_btiportal_course_unit} cu ON cu.id = cut.courseunitid
+                              JOIN {user} usr ON usr.id = cut.userid AND usr.deleted = 0
+                              JOIN {course_sections} cs ON cs.id = cu.sectionid AND cs.course = cu.courseid
+                             WHERE cu.courseid = ?
+                               AND cut.status = 'active'
+                               AND cu.sectionid > 0
+                               AND cs.section > 0
+                          ORDER BY cut.isprimary DESC, cut.id ASC";
+            foreach ($DB->get_records_sql($academicsql, [$courseid]) as $row) {
+                $sectionid = (int)$row->sectionid;
+                $isprimary = !empty($row->isprimary);
+                // Non-primary academic rows only fill gaps; primary overwrites legacy.
+                if (isset($bysection[$sectionid]) && !$isprimary) {
+                    continue;
+                }
+                $name = trim($row->firstname . ' ' . $row->lastname);
+                $bysection[$sectionid] = [
+                    'courseid' => (int)$row->courseid,
+                    'sectionid' => $sectionid,
+                    'teacheruserid' => (int)$row->teacheruserid,
+                    'teachername' => $name !== '' ? $name : 'Teacher',
+                    'teacheremail' => (string)$row->email,
+                ];
+            }
+        }
+
+        ksort($bysection);
+        return array_values($bysection);
     }
 
     /**
      * Sections the current user is assigned to teach (any course).
+     *
+     * Merges legacy local_btiportal_unit rows with active academic Course Unit
+     * teacher assignments that are mapped to a real Moodle topic section
+     * (section number > 0 — never General).
      *
      * @return list<array{courseid:int, sectionid:int, teacheruserid:int}>
      */
     public static function get_my_teaching_sections(int $userid): array {
         global $DB;
 
+        $bykey = [];
+
         $rows = $DB->get_records('local_btiportal_unit', ['teacheruserid' => $userid], 'courseid ASC, sectionid ASC');
-        $out = [];
         foreach ($rows as $row) {
-            $out[] = [
-                'courseid' => (int)$row->courseid,
-                'sectionid' => (int)$row->sectionid,
+            $courseid = (int)$row->courseid;
+            $sectionid = (int)$row->sectionid;
+            $bykey[$courseid . ':' . $sectionid] = [
+                'courseid' => $courseid,
+                'sectionid' => $sectionid,
                 'teacheruserid' => (int)$row->teacheruserid,
             ];
         }
-        return $out;
+
+        $dbman = $DB->get_manager();
+        if ($dbman->table_exists('local_btiportal_course_unit_teacher')
+                && $dbman->table_exists('local_btiportal_course_unit')) {
+            $sql = "SELECT cu.courseid, cu.sectionid, cut.userid AS teacheruserid
+                      FROM {local_btiportal_course_unit_teacher} cut
+                      JOIN {local_btiportal_course_unit} cu ON cu.id = cut.courseunitid
+                      JOIN {course_sections} cs ON cs.id = cu.sectionid AND cs.course = cu.courseid
+                     WHERE cut.userid = ?
+                       AND cut.status = 'active'
+                       AND cu.courseid > 1
+                       AND cu.sectionid > 0
+                       AND cs.section > 0
+                  ORDER BY cu.courseid ASC, cu.sectionid ASC";
+            foreach ($DB->get_records_sql($sql, [$userid]) as $row) {
+                $courseid = (int)$row->courseid;
+                $sectionid = (int)$row->sectionid;
+                $key = $courseid . ':' . $sectionid;
+                if (!isset($bykey[$key])) {
+                    $bykey[$key] = [
+                        'courseid' => $courseid,
+                        'sectionid' => $sectionid,
+                        'teacheruserid' => (int)$row->teacheruserid,
+                    ];
+                }
+            }
+        }
+
+        return array_values($bykey);
     }
 
     /**
@@ -129,6 +205,8 @@ class unit_helper {
 
     /**
      * Create a new topics section used as a portal unit.
+     * Reuses an existing non-General topic with the same name when present
+     * (prevents duplicate empty "Life Skills"-style sections).
      *
      * @return array{courseid:int, sectionid:int, section:int, name:string}
      */
@@ -142,6 +220,47 @@ class unit_helper {
         }
 
         $course = get_course($courseid);
+
+        // Prefer an existing topic with the same name (case-insensitive).
+        $existing = $DB->get_records_sql(
+            "SELECT *
+               FROM {course_sections}
+              WHERE course = ?
+                AND section > 0
+                AND " . $DB->sql_compare_text('name') . " <> ''
+           ORDER BY section ASC",
+            [$courseid]
+        );
+        $norm = \core_text::strtolower($name);
+        $best = null;
+        $bestmodcount = -1;
+        foreach ($existing as $candidate) {
+            $candidatename = trim((string)$candidate->name);
+            if ($candidatename === '') {
+                continue;
+            }
+            if (\core_text::strtolower($candidatename) !== $norm) {
+                continue;
+            }
+            $modcount = (int)$DB->count_records('course_modules', [
+                'course' => $courseid,
+                'section' => (int)$candidate->id,
+                'deletioninprogress' => 0,
+            ]);
+            if ($modcount > $bestmodcount) {
+                $best = $candidate;
+                $bestmodcount = $modcount;
+            }
+        }
+        if ($best) {
+            return [
+                'courseid' => $courseid,
+                'sectionid' => (int)$best->id,
+                'section' => (int)$best->section,
+                'name' => trim((string)$best->name) !== '' ? trim((string)$best->name) : $name,
+            ];
+        }
+
         $maxsection = (int)$DB->get_field_sql(
             "SELECT COALESCE(MAX(section), 0) FROM {course_sections} WHERE course = ?",
             [$courseid]
@@ -177,6 +296,13 @@ class unit_helper {
         global $DB, $CFG;
         require_once($CFG->dirroot . '/course/lib.php');
         // course_delete_module lives in course/lib.php (already required above).
+
+        // Soft-archive academic Course Unit rows for this section (additive; does not change return shape).
+        try {
+            academic_course_unit_helper::archive_by_section($courseid, $sectionid);
+        } catch (\Throwable $e) {
+            debugging('local_btiportal archive academic units on section delete: ' . $e->getMessage(), DEBUG_DEVELOPER);
+        }
 
         // Always clear portal mapping first so UI stays consistent even if Moodle section is gone.
         $DB->delete_records('local_btiportal_unit', [

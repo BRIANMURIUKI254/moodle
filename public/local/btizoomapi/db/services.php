@@ -5,7 +5,7 @@ $functions = [
     'local_btizoomapi_get_zoom_link' => [
         'classname'   => 'local_btizoomapi\\external\\get_zoom_link',
         'methodname'  => 'execute',
-        'description' => 'Return the join URL for a Zoom meeting by course module id (preferred) or course id.',
+        'description' => 'Return the join URL for a Zoom meeting activity in a Moodle course.',
         'type'        => 'read',
         'ajax'        => true,
     ],

@@ -30,3 +30,32 @@ Skipping the upgrade step leaves the portal calling undeclared WS functions, whi
 - **`moodle/public/local/btiportal/`** — runtime path used by the Moodle Docker volume.
 
 Keep them in sync after every plugin change.
+
+## Phase 2 academic model (1.2.0)
+
+Adds Programme / Curriculum / Academic Year / Semester / Course Unit / Prerequisites / Course Unit Teachers tables and WS. Does **not** change the Course Management UI or migrate existing Moodle content.
+
+After copying and upgrading:
+
+```powershell
+docker exec -u www-data moodle-app php admin/cli/purge_caches.php
+```
+
+Manual API checks: `docs/ACADEMIC_WS_MANUAL_TESTS.md`.
+
+### Known environment limitation — PHP syntax checks
+
+There is **no host `php` on PATH** in the typical Windows/PowerShell workspace. Do **not** rely on `php -l` on the host; it fails with `CommandNotFoundException`.
+
+Lint through the Moodle container against the runtime tree (`/var/www/html/public/local/btiportal`):
+
+```powershell
+# After syncing source → moodle/public/local/btiportal/
+docker exec moodle-app bash /var/www/html/public/local/btiportal/cli/lint_phase2b.sh
+```
+
+Or single-file:
+
+```powershell
+docker exec moodle-app php -l /var/www/html/public/local/btiportal/classes/external/create_academic_course_unit.php
+```

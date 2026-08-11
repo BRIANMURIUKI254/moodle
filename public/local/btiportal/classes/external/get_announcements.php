@@ -9,6 +9,7 @@ use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
 use local_btiportal\content_helper;
+use local_btiportal\department_auth_helper;
 
 class get_announcements extends external_api {
     public static function execute_parameters(): external_function_parameters {
@@ -38,7 +39,23 @@ class get_announcements extends external_api {
             }
         }
 
-        return ['announcements' => content_helper::list_announcements_for_courses($allowed)];
+        $announcements = content_helper::list_announcements_for_courses($allowed);
+        if (!department_auth_helper::is_university_admin((int)$USER->id)) {
+            $authorized = department_auth_helper::get_authorized_department_ids((int)$USER->id);
+            $announcements = array_values(array_filter($announcements, static function (array $row) use ($authorized): bool {
+                $dept = (int)($row['departmentid'] ?? 0);
+                $scope = (string)($row['scope'] ?? 'course');
+                if ($scope === 'department' || $dept > 0) {
+                    return in_array($dept, $authorized, true);
+                }
+                if ($scope === 'university') {
+                    return false;
+                }
+                return true;
+            }));
+        }
+
+        return ['announcements' => $announcements];
     }
 
     public static function execute_returns(): external_single_structure {
@@ -55,6 +72,11 @@ class get_announcements extends external_api {
                     'body' => new external_value(PARAM_RAW, 'Body'),
                     'eventid' => new external_value(PARAM_INT, 'Calendar event id'),
                     'timecreated' => new external_value(PARAM_INT, 'Created'),
+                    'departmentid' => new external_value(PARAM_INT, 'Department id', VALUE_OPTIONAL),
+                    'departmentcode' => new external_value(PARAM_TEXT, 'Department code', VALUE_OPTIONAL),
+                    'departmentname' => new external_value(PARAM_TEXT, 'Department name', VALUE_OPTIONAL),
+                    'scope' => new external_value(PARAM_TEXT, 'Publication scope', VALUE_OPTIONAL),
+                    'status' => new external_value(PARAM_TEXT, 'Publication status', VALUE_OPTIONAL),
                 ])
             ),
         ]);
