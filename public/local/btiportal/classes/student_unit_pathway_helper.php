@@ -100,13 +100,21 @@ class student_unit_pathway_helper {
             'name' => (string)($unit['name'] ?? ''),
             'credithours' => (int)($unit['credithours'] ?? 0),
             'requirementtype' => (string)($unit['requirementtype'] ?? ((int)($unit['isrequired'] ?? 1) === 1 ? 'required' : 'elective')),
+            'unittype' => (string)($unit['unittype'] ?? 'core'),
+            'isrequired' => (int)($unit['isrequired'] ?? 1),
             'moodlecourseid' => (int)($unit['moodlecourseid'] ?? $unit['courseid'] ?? 0),
             'mappingstatus' => (string)($unit['mappingstatus'] ?? 'unmapped'),
+            'moodlecoursename' => (string)($unit['moodlecoursename'] ?? ''),
+            'moodlecourseshortname' => (string)($unit['moodlecourseshortname'] ?? ''),
             'imageurl' => (string)($unit['imageurl'] ?? ''),
             'yearofstudy' => $yearnumber,
             'semestersequence' => $semesternumber,
             'curriculumyearlabel' => (string)($year['name'] ?? ('Year ' . $yearnumber)),
             'curriculumsemesterlabel' => (string)($sem['name'] ?? ('Semester ' . $semesternumber)),
+            'moodleenrolled' => 0,
+            'moodleaccessible' => 0,
+            'accesscode' => '',
+            'accessmessage' => '',
         ];
     }
 
@@ -117,13 +125,21 @@ class student_unit_pathway_helper {
             'name' => new \core_external\external_value(PARAM_TEXT, 'name'),
             'credithours' => new \core_external\external_value(PARAM_INT, 'credithours'),
             'requirementtype' => new \core_external\external_value(PARAM_ALPHANUMEXT, 'requirementtype'),
+            'unittype' => new \core_external\external_value(PARAM_ALPHANUMEXT, 'unittype'),
+            'isrequired' => new \core_external\external_value(PARAM_INT, 'isrequired'),
             'moodlecourseid' => new \core_external\external_value(PARAM_INT, 'moodlecourseid'),
             'mappingstatus' => new \core_external\external_value(PARAM_ALPHANUMEXT, 'mappingstatus'),
+            'moodlecoursename' => new \core_external\external_value(PARAM_TEXT, 'moodlecoursename'),
+            'moodlecourseshortname' => new \core_external\external_value(PARAM_TEXT, 'moodlecourseshortname'),
             'imageurl' => new \core_external\external_value(PARAM_RAW, 'imageurl'),
             'yearofstudy' => new \core_external\external_value(PARAM_INT, 'yearofstudy'),
             'semestersequence' => new \core_external\external_value(PARAM_INT, 'semestersequence'),
             'curriculumyearlabel' => new \core_external\external_value(PARAM_TEXT, 'curriculumyearlabel'),
             'curriculumsemesterlabel' => new \core_external\external_value(PARAM_TEXT, 'curriculumsemesterlabel'),
+            'moodleenrolled' => new \core_external\external_value(PARAM_INT, '1 when Moodle enrolment is active', VALUE_OPTIONAL),
+            'moodleaccessible' => new \core_external\external_value(PARAM_INT, '1 when the student can access the Moodle course', VALUE_OPTIONAL),
+            'accesscode' => new \core_external\external_value(PARAM_ALPHANUMEXT, 'ok|not_enrolled|unmapped|inaccessible|not_in_pathway', VALUE_OPTIONAL),
+            'accessmessage' => new \core_external\external_value(PARAM_TEXT, 'Student-facing access message', VALUE_OPTIONAL),
         ];
     }
 

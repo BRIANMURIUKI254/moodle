@@ -88,6 +88,48 @@ class student_profile_helper {
     }
 
     /**
+     * Admin student directory: every local_btiportal profile joined to its Moodle user.
+     *
+     * @return list<array>
+     */
+    public static function list_directory(
+        ?string $status = null,
+        ?string $academicstatus = null,
+        ?int $programmeid = null
+    ): array {
+        global $DB;
+
+        $params = [];
+        $where = 'u.deleted = 0';
+        if ($status !== null && $status !== '') {
+            $where .= ' AND sp.status = :status';
+            $params['status'] = strtolower($status);
+        }
+        if ($academicstatus !== null && $academicstatus !== '') {
+            $where .= ' AND sp.academicstatus = :academicstatus';
+            $params['academicstatus'] = strtolower($academicstatus);
+        }
+        if ($programmeid !== null && $programmeid > 0) {
+            $where .= ' AND sp.programmeid = :programmeid';
+            $params['programmeid'] = $programmeid;
+        }
+
+        $sql = "SELECT sp.*, u.firstname, u.lastname, u.email, u.username, u.idnumber, u.suspended,
+                       u.phone1, u.department
+                  FROM {local_btiportal_student_profile} sp
+                  JOIN {user} u ON u.id = sp.userid
+                 WHERE {$where}
+              ORDER BY u.lastname ASC, u.firstname ASC, u.id ASC";
+
+        $rows = $DB->get_records_sql($sql, $params, 0, academic_constants::LIST_LIMIT);
+        $out = [];
+        foreach ($rows as $row) {
+            $out[] = self::format_directory_row($row);
+        }
+        return $out;
+    }
+
+    /**
      * @return list<array>
      */
     public static function list_by_programme(int $programmeid, ?string $status = null, ?int $curriculumid = null): array {
@@ -241,6 +283,67 @@ class student_profile_helper {
         return $errors;
     }
 
+    public static function format_directory_row(\stdClass $row): array {
+        $profile = self::format($row);
+        $enriched = student_portal_helper::enrich_profile($profile) ?? $profile;
+        $userid = (int)$row->userid;
+        $enriched['firstname'] = (string)($row->firstname ?? '');
+        $enriched['lastname'] = (string)($row->lastname ?? '');
+        $enriched['fullname'] = trim($enriched['firstname'] . ' ' . $enriched['lastname']);
+        if ($enriched['fullname'] === '') {
+            $enriched['fullname'] = 'User ' . $userid;
+        }
+        $enriched['email'] = (string)($row->email ?? '');
+        $enriched['username'] = (string)($row->username ?? '');
+        $enriched['idnumber'] = trim((string)($row->idnumber ?? ''));
+        $enriched['phone1'] = trim((string)($row->phone1 ?? ''));
+        $enriched['department'] = trim((string)($row->department ?? ''));
+        $enriched['suspended'] = (int)(bool)($row->suspended ?? 0);
+        $enriched['moodlecoursecount'] = self::count_active_course_enrolments($userid);
+        $enriched['hasstudentrole'] = self::has_course_student_role($userid) ? 1 : 0;
+        return $enriched;
+    }
+
+    public static function count_active_course_enrolments(int $userid): int {
+        global $DB;
+        if ($userid <= 0) {
+            return 0;
+        }
+        return (int)$DB->get_field_sql(
+            "SELECT COUNT(DISTINCT c.id)
+               FROM {user_enrolments} ue
+               JOIN {enrol} e ON e.id = ue.enrolid
+               JOIN {course} c ON c.id = e.courseid
+              WHERE ue.userid = ?
+                AND ue.status = ?
+                AND c.id <> ?",
+            [$userid, ENROL_USER_ACTIVE, SITEID]
+        );
+    }
+
+    public static function has_course_student_role(int $userid): bool {
+        global $DB;
+        if ($userid <= 0) {
+            return false;
+        }
+        $studentrole = $DB->get_field('role', 'id', ['shortname' => 'student']);
+        if (!$studentrole) {
+            return false;
+        }
+        return $DB->record_exists_sql(
+            "SELECT 1
+               FROM {role_assignments} ra
+               JOIN {context} ctx ON ctx.id = ra.contextid AND ctx.contextlevel = :ctxlevel
+              WHERE ra.userid = :userid
+                AND ra.roleid = :roleid",
+            [
+                'ctxlevel' => CONTEXT_COURSE,
+                'userid' => $userid,
+                'roleid' => (int)$studentrole,
+            ]
+        );
+    }
+
     public static function format(\stdClass $row): array {
         return [
             'id' => (int)$row->id,
@@ -269,6 +372,38 @@ class student_profile_helper {
             'timemodified' => (int)$row->timemodified,
             'usermodified' => (int)($row->usermodified ?? 0),
         ];
+    }
+
+    public static function directory_structure_keys(): array {
+        $base = self::structure_keys();
+        $extra = [
+            'firstname' => new \core_external\external_value(PARAM_TEXT, 'firstname'),
+            'lastname' => new \core_external\external_value(PARAM_TEXT, 'lastname'),
+            'fullname' => new \core_external\external_value(PARAM_TEXT, 'fullname'),
+            'email' => new \core_external\external_value(PARAM_TEXT, 'email'),
+            'username' => new \core_external\external_value(PARAM_TEXT, 'username'),
+            'idnumber' => new \core_external\external_value(PARAM_TEXT, 'idnumber'),
+            'phone1' => new \core_external\external_value(PARAM_TEXT, 'phone1', VALUE_OPTIONAL),
+            'department' => new \core_external\external_value(PARAM_TEXT, 'department', VALUE_OPTIONAL),
+            'suspended' => new \core_external\external_value(PARAM_INT, 'Moodle account suspended flag'),
+            'moodlecoursecount' => new \core_external\external_value(PARAM_INT, 'Active Moodle course enrolment count'),
+            'hasstudentrole' => new \core_external\external_value(PARAM_INT, 'Has student role in at least one course'),
+            'schoolname' => new \core_external\external_value(PARAM_TEXT, 'schoolname', VALUE_OPTIONAL),
+            'schoolcode' => new \core_external\external_value(PARAM_TEXT, 'schoolcode', VALUE_OPTIONAL),
+            'departmentname' => new \core_external\external_value(PARAM_TEXT, 'departmentname', VALUE_OPTIONAL),
+            'departmentcode' => new \core_external\external_value(PARAM_TEXT, 'departmentcode', VALUE_OPTIONAL),
+            'programmename' => new \core_external\external_value(PARAM_TEXT, 'programmename', VALUE_OPTIONAL),
+            'programmecode' => new \core_external\external_value(PARAM_TEXT, 'programmecode', VALUE_OPTIONAL),
+            'curriculumname' => new \core_external\external_value(PARAM_TEXT, 'curriculumname', VALUE_OPTIONAL),
+            'curriculumversion' => new \core_external\external_value(PARAM_TEXT, 'curriculumversion', VALUE_OPTIONAL),
+            'curriculumyearlabel' => new \core_external\external_value(PARAM_TEXT, 'curriculumyearlabel', VALUE_OPTIONAL),
+            'curriculumsemesterlabel' => new \core_external\external_value(PARAM_TEXT, 'curriculumsemesterlabel', VALUE_OPTIONAL),
+            'academicyearname' => new \core_external\external_value(PARAM_TEXT, 'academicyearname', VALUE_OPTIONAL),
+            'semestername' => new \core_external\external_value(PARAM_TEXT, 'semestername', VALUE_OPTIONAL),
+            'yearofstudy' => new \core_external\external_value(PARAM_INT, 'yearofstudy', VALUE_OPTIONAL),
+            'semestersequence' => new \core_external\external_value(PARAM_INT, 'semestersequence', VALUE_OPTIONAL),
+        ];
+        return array_merge($base, $extra);
     }
 
     public static function structure_keys(): array {

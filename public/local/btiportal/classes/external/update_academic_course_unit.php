@@ -48,8 +48,12 @@ class update_academic_course_unit extends external_api {
         if (!$existing) {
             return academic_api_response::for_external(academic_api_response::fail_field('id', 'Course unit not found'));
         }
-        $targetcourse = $courseid > 0 ? $courseid : (int)$existing['courseid'];
-        academic_auth_helper::require_course_unit_write($targetcourse);
+        $targetcourse = $courseid > 1 ? $courseid : (int)$existing['courseid'];
+        if ($targetcourse > 1) {
+            academic_auth_helper::require_course_unit_write($targetcourse);
+        } else {
+            academic_auth_helper::require_manage_academic();
+        }
         $input = [];
         if ($code !== '') { $input['code'] = $code; }
         if ($name !== '') { $input['name'] = $name; }

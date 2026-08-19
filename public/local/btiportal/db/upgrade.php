@@ -2074,5 +2074,419 @@ function xmldb_local_btiportal_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026081101, 'local', 'btiportal');
     }
 
+    if ($oldversion < 2026081300) {
+        $dbman = $DB->get_manager();
+        $tt = new xmldb_table('local_btiportal_timetable');
+        if ($dbman->table_exists($tt)) {
+            $field = new xmldb_field('zoommeetingid', XMLDB_TYPE_CHAR, '64', null, XMLDB_NOTNULL, null, '');
+            if (!$dbman->field_exists($tt, $field)) {
+                $dbman->add_field($tt, $field);
+            }
+            $field = new xmldb_field('zoomcmid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0);
+            if (!$dbman->field_exists($tt, $field)) {
+                $dbman->add_field($tt, $field);
+            }
+            $field = new xmldb_field('zoomstatus', XMLDB_TYPE_CHAR, '32', null, XMLDB_NOTNULL, null, 'none');
+            if (!$dbman->field_exists($tt, $field)) {
+                $dbman->add_field($tt, $field);
+            }
+        }
+
+        $cu = new xmldb_table('local_btiportal_course_unit');
+        if ($dbman->table_exists($cu)) {
+            $index = new xmldb_index('course_unit_map_uq', XMLDB_INDEX_UNIQUE, ['curriculumid', 'courseid', 'sectionid']);
+            if ($dbman->index_exists($cu, $index)) {
+                $dbman->drop_index($cu, $index);
+            }
+        }
+
+        external_update_descriptions('local_btiportal');
+        $fns = [
+            'local_btiportal_get_course_unit_moodle_diagnostics',
+            'local_btiportal_sync_academic_course_unit_moodle',
+            'local_btiportal_list_staff_message_contacts',
+            'local_btiportal_assert_staff_can_message',
+        ];
+        foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+            $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+            if (!$service) {
+                continue;
+            }
+            foreach ($fns as $fn) {
+                if (!$DB->record_exists('external_services_functions', [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $fn,
+                ])) {
+                    $DB->insert_record('external_services_functions', (object) [
+                        'externalserviceid' => $service->id,
+                        'functionname' => $fn,
+                    ]);
+                }
+            }
+        }
+        upgrade_plugin_savepoint(true, 2026081300, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026081301) {
+        external_update_descriptions('local_btiportal');
+        $fns = [
+            'local_btiportal_preview_academic_course_unit_moodle',
+        ];
+        foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+            $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+            if (!$service) {
+                continue;
+            }
+            foreach ($fns as $fn) {
+                if (!$DB->record_exists('external_services_functions', [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $fn,
+                ])) {
+                    $DB->insert_record('external_services_functions', (object) [
+                        'externalserviceid' => $service->id,
+                        'functionname' => $fn,
+                    ]);
+                }
+            }
+        }
+        upgrade_plugin_savepoint(true, 2026081301, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026081302) {
+        $dbman = $DB->get_manager();
+        $cu = new xmldb_table('local_btiportal_course_unit');
+        if ($dbman->table_exists($cu)) {
+            $field = new xmldb_field('moodleverifiedat', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0, 'timemodified');
+            if (!$dbman->field_exists($cu, $field)) {
+                $dbman->add_field($cu, $field);
+            }
+        }
+        external_update_descriptions('local_btiportal');
+        upgrade_plugin_savepoint(true, 2026081302, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026081303) {
+        $dbman = $DB->get_manager();
+        $table = new xmldb_table('local_btiportal_curriculum_unit');
+        if (!$dbman->table_exists($table)) {
+            $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+            $table->add_field('curriculumid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0);
+            $table->add_field('courseunitid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0);
+            $table->add_field('yearofstudy', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, 1);
+            $table->add_field('semestersequence', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, 1);
+            $table->add_field('sortorder', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0);
+            $table->add_field('unittype', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'core');
+            $table->add_field('isrequired', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, 1);
+            $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0);
+            $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, 0);
+            $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+            $table->add_index('curr_unit_uq', XMLDB_INDEX_UNIQUE, ['curriculumid', 'courseunitid']);
+            $table->add_index('curr_unit_curr', XMLDB_INDEX_NOTUNIQUE, ['curriculumid']);
+            $table->add_index('curr_unit_unit', XMLDB_INDEX_NOTUNIQUE, ['courseunitid']);
+            $dbman->create_table($table);
+        }
+        \local_btiportal\curriculum_unit_helper::migrate_from_course_units();
+        external_update_descriptions('local_btiportal');
+        $fns = [
+            'local_btiportal_list_curriculum_unit_assignments',
+            'local_btiportal_save_curriculum_unit_assignments',
+        ];
+        foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+            $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+            if (!$service) {
+                continue;
+            }
+            foreach ($fns as $fn) {
+                if (!$DB->record_exists('external_services_functions', [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $fn,
+                ])) {
+                    $DB->insert_record('external_services_functions', (object) [
+                        'externalserviceid' => $service->id,
+                        'functionname' => $fn,
+                    ]);
+                }
+            }
+        }
+        upgrade_plugin_savepoint(true, 2026081303, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026081304) {
+        external_update_descriptions('local_btiportal');
+        $fns = [
+            'local_btiportal_audit_student_moodle_enrolments',
+            'local_btiportal_remove_student_legacy_enrolment',
+            'local_btiportal_reconcile_lecturer_moodle_enrolments',
+        ];
+        foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+            $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+            if (!$service) {
+                continue;
+            }
+            foreach ($fns as $fn) {
+                if (!$DB->record_exists('external_services_functions', [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $fn,
+                ])) {
+                    $DB->insert_record('external_services_functions', (object) [
+                        'externalserviceid' => $service->id,
+                        'functionname' => $fn,
+                    ]);
+                }
+            }
+        }
+        upgrade_plugin_savepoint(true, 2026081304, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026081305) {
+        external_update_descriptions('local_btiportal');
+        $fns = [
+            'local_btiportal_ensure_my_pathway_enrolments',
+            'local_btiportal_get_my_course_access',
+        ];
+        foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+            $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+            if (!$service) {
+                continue;
+            }
+            foreach ($fns as $fn) {
+                if (!$DB->record_exists('external_services_functions', [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $fn,
+                ])) {
+                    $DB->insert_record('external_services_functions', (object) [
+                        'externalserviceid' => $service->id,
+                        'functionname' => $fn,
+                    ]);
+                }
+            }
+        }
+        upgrade_plugin_savepoint(true, 2026081305, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026081401) {
+        $meta = $CFG->prefix . 'local_btiportal_assessment_meta';
+        if (!$DB->record_exists_sql(
+            'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+            [$meta]
+        )) {
+            $DB->execute("
+                CREATE TABLE {$meta} (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    cmid BIGINT NOT NULL,
+                    courseid BIGINT NOT NULL,
+                    unitid BIGINT NOT NULL,
+                    module VARCHAR(20) NOT NULL,
+                    instanceid BIGINT NOT NULL,
+                    assessmenttype VARCHAR(32) NOT NULL,
+                    passmark DECIMAL(10,2) NOT NULL DEFAULT 0,
+                    requirefullscreen TINYINT NOT NULL DEFAULT 0,
+                    maxwarnings INT NOT NULL DEFAULT 3,
+                    warningaction VARCHAR(20) NOT NULL DEFAULT 'submit_flag',
+                    timecreated BIGINT NOT NULL,
+                    timemodified BIGINT NOT NULL,
+                    UNIQUE KEY cmid_uq (cmid),
+                    KEY courseid_idx (courseid),
+                    KEY instance_idx (module, instanceid)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            ");
+        }
+
+        $events = $CFG->prefix . 'local_btiportal_exam_event';
+        if (!$DB->record_exists_sql(
+            'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+            [$events]
+        )) {
+            $DB->execute("
+                CREATE TABLE {$events} (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    quizid BIGINT NOT NULL,
+                    cmid BIGINT NOT NULL,
+                    courseid BIGINT NOT NULL,
+                    attemptid BIGINT NOT NULL DEFAULT 0,
+                    userid BIGINT NOT NULL,
+                    eventtype VARCHAR(40) NOT NULL,
+                    warningcount INT NOT NULL DEFAULT 0,
+                    details VARCHAR(500) NOT NULL DEFAULT '',
+                    timecreated BIGINT NOT NULL,
+                    KEY quizid_idx (quizid),
+                    KEY attemptid_idx (attemptid),
+                    KEY userid_idx (userid),
+                    KEY courseid_idx (courseid)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            ");
+        }
+
+        $flags = $CFG->prefix . 'local_btiportal_exam_flag';
+        if (!$DB->record_exists_sql(
+            'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+            [$flags]
+        )) {
+            $DB->execute("
+                CREATE TABLE {$flags} (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    quizid BIGINT NOT NULL,
+                    attemptid BIGINT NOT NULL,
+                    userid BIGINT NOT NULL,
+                    warningcount INT NOT NULL DEFAULT 0,
+                    flagged TINYINT NOT NULL DEFAULT 0,
+                    autosubmitted TINYINT NOT NULL DEFAULT 0,
+                    lastaction VARCHAR(20) NOT NULL DEFAULT '',
+                    timemodified BIGINT NOT NULL,
+                    UNIQUE KEY attemptid_uq (attemptid),
+                    KEY quizid_idx (quizid),
+                    KEY userid_idx (userid)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            ");
+        }
+
+        external_update_descriptions('local_btiportal');
+        $fns = [
+            'local_btiportal_create_quiz_assessment',
+            'local_btiportal_get_assessments',
+            'local_btiportal_update_assessment',
+            'local_btiportal_set_assessment_visibility',
+            'local_btiportal_delete_assessment',
+            'local_btiportal_duplicate_assessment',
+            'local_btiportal_get_assessment_results',
+            'local_btiportal_get_quiz_questions',
+            'local_btiportal_get_attempt_questions',
+            'local_btiportal_log_exam_event',
+            'local_btiportal_get_exam_events',
+            'local_btiportal_apply_exam_warning',
+        ];
+        foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+            $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+            if (!$service) {
+                continue;
+            }
+            foreach ($fns as $fn) {
+                if (!$DB->record_exists('external_services_functions', [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $fn,
+                ])) {
+                    $DB->insert_record('external_services_functions', (object) [
+                        'externalserviceid' => $service->id,
+                        'functionname' => $fn,
+                    ]);
+                }
+            }
+        }
+
+        upgrade_plugin_savepoint(true, 2026081401, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026081402) {
+        external_update_descriptions('local_btiportal');
+        $fns = [
+            'local_btiportal_list_student_directory',
+        ];
+        foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+            $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+            if (!$service) {
+                continue;
+            }
+            foreach ($fns as $fn) {
+                if (!$DB->record_exists('external_services_functions', [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $fn,
+                ])) {
+                    $DB->insert_record('external_services_functions', (object) [
+                        'externalserviceid' => $service->id,
+                        'functionname' => $fn,
+                    ]);
+                }
+            }
+        }
+
+        upgrade_plugin_savepoint(true, 2026081402, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026081403) {
+        external_update_descriptions('local_btiportal');
+        $fns = [
+            'local_btiportal_ensure_my_teaching_access',
+        ];
+        foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+            $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+            if (!$service) {
+                continue;
+            }
+            foreach ($fns as $fn) {
+                if (!$DB->record_exists('external_services_functions', [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $fn,
+                ])) {
+                    $DB->insert_record('external_services_functions', (object) [
+                        'externalserviceid' => $service->id,
+                        'functionname' => $fn,
+                    ]);
+                }
+            }
+        }
+
+        upgrade_plugin_savepoint(true, 2026081403, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026081404) {
+        // Recurring weekday timetable rules reuse the existing recurrence column
+        // (e.g. "Mon,Wed,Fri"). No schema change — refresh WS descriptions only.
+        external_update_descriptions('local_btiportal');
+        upgrade_plugin_savepoint(true, 2026081404, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026081801) {
+        // Site Administrator portal login: attach user-context WS, then pre-create
+        // a permanent bti_portal_api token so login/token.php can return it.
+        external_update_descriptions('local_btiportal');
+        $fns = [
+            'local_btiportal_get_current_user_context',
+        ];
+        foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+            $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+            if (!$service) {
+                continue;
+            }
+            foreach ($fns as $fn) {
+                if (!$DB->record_exists('external_services_functions', [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $fn,
+                ])) {
+                    $DB->insert_record('external_services_functions', (object) [
+                        'externalserviceid' => $service->id,
+                        'functionname' => $fn,
+                    ]);
+                }
+            }
+        }
+        \local_btiportal\service_auth_helper::ensure_site_admins_can_login();
+        upgrade_plugin_savepoint(true, 2026081801, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026081901) {
+        external_update_descriptions('local_btiportal');
+        $fns = [
+            'local_btiportal_get_my_portal_role',
+        ];
+        foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+            $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+            if (!$service) {
+                continue;
+            }
+            foreach ($fns as $fn) {
+                if (!$DB->record_exists('external_services_functions', [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $fn,
+                ])) {
+                    $DB->insert_record('external_services_functions', (object) [
+                        'externalserviceid' => $service->id,
+                        'functionname' => $fn,
+                    ]);
+                }
+            }
+        }
+        upgrade_plugin_savepoint(true, 2026081901, 'local', 'btiportal');
+    }
+
     return true;
 }

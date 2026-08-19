@@ -5,7 +5,7 @@ defined('MOODLE_INTERNAL') || die();
 
 /**
  * Academic Course Unit — first-class record referencing Moodle course + section.
- * Does not create/update/delete Moodle course or section rows.
+ * Auto-provisions Moodle course/section when courseid/sectionid are omitted.
  */
 class academic_course_unit_helper {
     /**
@@ -28,9 +28,54 @@ class academic_course_unit_helper {
         $status = strtolower(trim((string)($input['status'] ?? 'draft')));
         $isrequired = array_key_exists('isrequired', $input) ? (!empty($input['isrequired']) ? 1 : 0) : 1;
 
+        $autoprovide = ($courseid <= 1);
         $errors = self::validate_refs(
             $code, $name, $programmeid, $curriculumid, $yearofstudy, $semestersequence,
-            $courseid, $sectionid, $credithours, $unittype, $status, null
+            $courseid, $sectionid, $credithours, $unittype, $status, null, $autoprovide
+        );
+        if ($errors) {
+            return ['ok' => false, 'errors' => $errors];
+        }
+
+        // Provision Moodle course + section when not mapped yet.
+        if ($autoprovide) {
+            try {
+                $synced = moodle_catalogue_sync_helper::ensure_unit_moodle_course_and_section(
+                    $programmeid,
+                    $code,
+                    $name,
+                    $description
+                );
+                $courseid = (int)$synced['courseid'];
+                $sectionid = (int)$synced['sectionid'];
+            } catch (\Throwable $e) {
+                return [
+                    'ok' => false,
+                    'errors' => [[
+                        'field' => 'courseid',
+                        'message' => 'Could not sync Moodle course/section: ' . $e->getMessage(),
+                    ]],
+                ];
+            }
+        } else if ($sectionid <= 0) {
+            try {
+                $synced = moodle_catalogue_sync_helper::ensure_unit_section($courseid, $name);
+                $sectionid = (int)$synced['sectionid'];
+            } catch (\Throwable $e) {
+                return [
+                    'ok' => false,
+                    'errors' => [[
+                        'field' => 'sectionid',
+                        'message' => 'Could not sync Moodle section: ' . $e->getMessage(),
+                    ]],
+                ];
+            }
+        }
+
+        // Re-validate Moodle refs after provisioning.
+        $errors = self::validate_refs(
+            $code, $name, $programmeid, $curriculumid, $yearofstudy, $semestersequence,
+            $courseid, $sectionid, $credithours, $unittype, $status, null, false
         );
         if ($errors) {
             return ['ok' => false, 'errors' => $errors];
@@ -56,6 +101,8 @@ class academic_course_unit_helper {
             'createdby' => $userid,
             'modifiedby' => $userid,
         ]);
+
+        curriculum_unit_helper::ensure_assignment_for_unit((int)$id);
 
         return ['ok' => true, 'record' => self::get($id)];
     }
@@ -86,9 +133,52 @@ class academic_course_unit_helper {
         $status = array_key_exists('status', $input)
             ? strtolower(trim((string)$input['status'])) : (string)$row->status;
 
+        $autoprovide = ($courseid <= 1);
         $errors = self::validate_refs(
             $code, $name, $programmeid, $curriculumid, $yearofstudy, $semestersequence,
-            $courseid, $sectionid, $credithours, $unittype, $status, $id
+            $courseid, $sectionid, $credithours, $unittype, $status, $id, $autoprovide
+        );
+        if ($errors) {
+            return ['ok' => false, 'errors' => $errors];
+        }
+
+        if ($autoprovide) {
+            try {
+                $synced = moodle_catalogue_sync_helper::ensure_unit_moodle_course_and_section(
+                    $programmeid,
+                    $code,
+                    $name,
+                    (string)($input['description'] ?? $row->description ?? '')
+                );
+                $courseid = (int)$synced['courseid'];
+                $sectionid = (int)$synced['sectionid'];
+            } catch (\Throwable $e) {
+                return [
+                    'ok' => false,
+                    'errors' => [[
+                        'field' => 'courseid',
+                        'message' => 'Could not sync Moodle course/section: ' . $e->getMessage(),
+                    ]],
+                ];
+            }
+        } else if ($sectionid <= 0) {
+            try {
+                $synced = moodle_catalogue_sync_helper::ensure_unit_section($courseid, $name);
+                $sectionid = (int)$synced['sectionid'];
+            } catch (\Throwable $e) {
+                return [
+                    'ok' => false,
+                    'errors' => [[
+                        'field' => 'sectionid',
+                        'message' => 'Could not sync Moodle section: ' . $e->getMessage(),
+                    ]],
+                ];
+            }
+        }
+
+        $errors = self::validate_refs(
+            $code, $name, $programmeid, $curriculumid, $yearofstudy, $semestersequence,
+            $courseid, $sectionid, $credithours, $unittype, $status, $id, false
         );
         if ($errors) {
             return ['ok' => false, 'errors' => $errors];
@@ -111,6 +201,40 @@ class academic_course_unit_helper {
         if (array_key_exists('isrequired', $input)) {
             $row->isrequired = !empty($input['isrequired']) ? 1 : 0;
         }
+        $row->timemodified = time();
+        $row->modifiedby = $userid;
+        $DB->update_record('local_btiportal_course_unit', $row);
+
+        curriculum_unit_helper::ensure_assignment_for_unit((int)$row->id);
+
+        return ['ok' => true, 'record' => self::format($row)];
+    }
+
+    /**
+     * Update only the Moodle course/section mapping.
+     * Does not rewrite academic identity and does not create or delete Moodle courses.
+     *
+     * @return array{ok:bool,record?:array,errors?:list}
+     */
+    public static function update_moodle_mapping(int $id, int $courseid, int $sectionid, int $userid): array {
+        global $DB;
+
+        $row = $DB->get_record('local_btiportal_course_unit', ['id' => $id]);
+        if (!$row) {
+            return ['ok' => false, 'errors' => [['field' => 'id', 'message' => 'Course unit not found']]];
+        }
+        if ($courseid <= 1 || !$DB->record_exists('course', ['id' => $courseid])) {
+            return ['ok' => false, 'errors' => [['field' => 'courseid', 'message' => 'Moodle course not found']]];
+        }
+        $section = $sectionid > 0
+            ? $DB->get_record('course_sections', ['id' => $sectionid, 'course' => $courseid])
+            : false;
+        if (!$section) {
+            return ['ok' => false, 'errors' => [['field' => 'sectionid', 'message' => 'Moodle section not found for this course']]];
+        }
+
+        $row->courseid = $courseid;
+        $row->sectionid = $sectionid;
         $row->timemodified = time();
         $row->modifiedby = $userid;
         $DB->update_record('local_btiportal_course_unit', $row);
@@ -164,30 +288,25 @@ class academic_course_unit_helper {
     }
 
     /**
-     * Hard-delete academic rows for a Moodle course (course_deleted observer).
+     * When a Moodle course is deleted, keep Course Unit catalogue identity.
+     * Clear the Moodle mapping only. Do not delete units, teachers, or curriculum relationships.
      */
     public static function delete_for_course(int $courseid): void {
         global $DB;
-        if (!$DB->get_manager()->table_exists('local_btiportal_course_unit')) {
+        if ($courseid <= 1 || !$DB->get_manager()->table_exists('local_btiportal_course_unit')) {
             return;
         }
-        $units = $DB->get_records('local_btiportal_course_unit', ['courseid' => $courseid], '', 'id');
-        if (!$units) {
-            return;
+        $units = $DB->get_records('local_btiportal_course_unit', ['courseid' => $courseid]);
+        $now = time();
+        foreach ($units as $unit) {
+            $unit->courseid = 0;
+            $unit->sectionid = 0;
+            if (property_exists($unit, 'moodleverifiedat')) {
+                $unit->moodleverifiedat = 0;
+            }
+            $unit->timemodified = $now;
+            $DB->update_record('local_btiportal_course_unit', $unit);
         }
-        $ids = array_map('intval', array_keys($units));
-        list($insql, $params) = $DB->get_in_or_equal($ids);
-        if ($DB->get_manager()->table_exists('local_btiportal_course_unit_prerequisite')) {
-            $DB->delete_records_select(
-                'local_btiportal_course_unit_prerequisite',
-                "courseunitid {$insql} OR prerequisitecourseunitid {$insql}",
-                array_merge($params, $params)
-            );
-        }
-        if ($DB->get_manager()->table_exists('local_btiportal_course_unit_teacher')) {
-            $DB->delete_records_select('local_btiportal_course_unit_teacher', "courseunitid {$insql}", $params);
-        }
-        $DB->delete_records('local_btiportal_course_unit', ['courseid' => $courseid]);
     }
 
     public static function get(int $id): ?array {
@@ -273,7 +392,8 @@ class academic_course_unit_helper {
         float $credithours,
         string $unittype,
         string $status,
-        ?int $excludeid
+        ?int $excludeid,
+        bool $allowmissingmoodle = false
     ): array {
         global $DB;
         $errors = [];
@@ -310,38 +430,50 @@ class academic_course_unit_helper {
         if (!in_array($status, academic_constants::UNIT_STATUSES, true)) {
             $errors[] = ['field' => 'status', 'message' => 'Invalid unit status'];
         }
-        if ($courseid <= 1 || !$DB->record_exists('course', ['id' => $courseid])) {
-            $errors[] = ['field' => 'courseid', 'message' => 'Moodle course not found'];
-        }
-        $section = ($sectionid > 0 && $courseid > 0)
-            ? $DB->get_record('course_sections', ['id' => $sectionid, 'course' => $courseid])
-            : false;
-        if (!$section) {
-            $errors[] = ['field' => 'sectionid', 'message' => 'Moodle section not found for this course'];
-        } else if ((int)$section->section <= 0) {
-            $errors[] = ['field' => 'sectionid', 'message' => 'The General section cannot be mapped as a Course Unit'];
-        }
 
-        if ($curriculumid > 0 && $courseid > 0 && $sectionid > 0) {
-            $dup = $DB->get_record('local_btiportal_course_unit', [
-                'curriculumid' => $curriculumid,
-                'courseid' => $courseid,
-                'sectionid' => $sectionid,
-            ]);
-            if ($dup && ($excludeid === null || (int)$dup->id !== $excludeid)) {
-                $errors[] = [
-                    'field' => 'sectionid',
-                    'message' => 'This Moodle section is already mapped in this curriculum',
-                ];
+        if (!$allowmissingmoodle) {
+            if ($courseid <= 1 || !$DB->record_exists('course', ['id' => $courseid])) {
+                $errors[] = ['field' => 'courseid', 'message' => 'Moodle course not found'];
+            }
+            $section = ($sectionid > 0 && $courseid > 0)
+                ? $DB->get_record('course_sections', ['id' => $sectionid, 'course' => $courseid])
+                : false;
+            if (!$section) {
+                $errors[] = ['field' => 'sectionid', 'message' => 'Moodle section not found for this course'];
+            } else if ((int)$section->section <= 0) {
+                $errors[] = ['field' => 'sectionid', 'message' => 'The General section cannot be mapped as a Course Unit'];
+            }
+
+            if ($curriculumid > 0 && $courseid > 0 && $sectionid > 0) {
+                $dup = $DB->get_record('local_btiportal_course_unit', [
+                    'curriculumid' => $curriculumid,
+                    'courseid' => $courseid,
+                    'sectionid' => $sectionid,
+                ]);
+                if ($dup && ($excludeid === null || (int)$dup->id !== $excludeid)) {
+                    $errors[] = [
+                        'field' => 'sectionid',
+                        'message' => 'This Moodle section is already mapped in this curriculum',
+                    ];
+                }
             }
         }
-        if ($curriculumid > 0 && $code !== '') {
-            $codedup = $DB->get_record('local_btiportal_course_unit', [
-                'curriculumid' => $curriculumid,
-                'code' => $code,
-            ]);
-            if ($codedup && ($excludeid === null || (int)$codedup->id !== $excludeid)) {
-                $errors[] = ['field' => 'code', 'message' => 'Code already exists within this curriculum'];
+
+        if ($code !== '') {
+            $existingcodes = $DB->get_records('local_btiportal_course_unit', null, '', 'id,code,curriculumid');
+            foreach ($existingcodes as $existing) {
+                if ($excludeid !== null && (int)$existing->id === $excludeid) {
+                    continue;
+                }
+                if (strcasecmp((string)$existing->code, $code) !== 0) {
+                    continue;
+                }
+                if ((int)$existing->curriculumid === $curriculumid && $curriculumid > 0) {
+                    $errors[] = ['field' => 'code', 'message' => 'The unit code already exists within this curriculum'];
+                } else {
+                    $errors[] = ['field' => 'code', 'message' => 'The unit code already exists'];
+                }
+                break;
             }
         }
 
@@ -349,6 +481,27 @@ class academic_course_unit_helper {
     }
 
     public static function format(\stdClass $row): array {
+        global $DB;
+
+        $courseid = (int)$row->courseid;
+        $moodlecourseshortname = '';
+        $moodlecoursefullname = '';
+        $moodlecoursevisible = 0;
+        $mappingstatus = 'not_connected';
+        if ($courseid <= 1) {
+            $mappingstatus = 'not_connected';
+        } else {
+            $course = $DB->get_record('course', ['id' => $courseid], 'id,fullname,shortname,visible');
+            if ($course) {
+                $moodlecourseshortname = (string)$course->shortname;
+                $moodlecoursefullname = (string)$course->fullname;
+                $moodlecoursevisible = (int)$course->visible;
+                $mappingstatus = ((int)$course->visible === 1) ? 'connected' : 'unpublished_moodle_course';
+            } else {
+                $mappingstatus = 'missing_moodle_course';
+            }
+        }
+
         return [
             'id' => (int)$row->id,
             'code' => (string)$row->code,
@@ -358,13 +511,18 @@ class academic_course_unit_helper {
             'curriculumid' => (int)$row->curriculumid,
             'yearofstudy' => (int)$row->yearofstudy,
             'semestersequence' => (int)$row->semestersequence,
-            'courseid' => (int)$row->courseid,
+            'courseid' => $courseid,
             'sectionid' => (int)$row->sectionid,
             'credithours' => (float)$row->credithours,
             'unittype' => (string)$row->unittype,
             'status' => (string)$row->status,
             'isrequired' => (int)$row->isrequired,
             'imageurl' => (string)($row->imageurl ?? ''),
+            'moodlecourseshortname' => $moodlecourseshortname,
+            'moodlecoursefullname' => $moodlecoursefullname,
+            'moodlecoursevisible' => $moodlecoursevisible,
+            'mappingstatus' => $mappingstatus,
+            'moodleverifiedat' => isset($row->moodleverifiedat) ? (int)$row->moodleverifiedat : 0,
             'timecreated' => (int)$row->timecreated,
             'timemodified' => (int)$row->timemodified,
             'createdby' => (int)$row->createdby,
@@ -389,6 +547,11 @@ class academic_course_unit_helper {
             'status' => new \core_external\external_value(PARAM_ALPHANUMEXT, 'status'),
             'isrequired' => new \core_external\external_value(PARAM_INT, 'isrequired'),
             'imageurl' => new \core_external\external_value(PARAM_TEXT, 'imageurl', VALUE_OPTIONAL),
+            'moodlecourseshortname' => new \core_external\external_value(PARAM_TEXT, 'Moodle shortname', VALUE_OPTIONAL),
+            'moodlecoursefullname' => new \core_external\external_value(PARAM_TEXT, 'Moodle fullname', VALUE_OPTIONAL),
+            'moodlecoursevisible' => new \core_external\external_value(PARAM_INT, 'Moodle visibility', VALUE_OPTIONAL),
+            'mappingstatus' => new \core_external\external_value(PARAM_ALPHANUMEXT, 'connected|not_connected|missing_moodle_course|unpublished_moodle_course', VALUE_OPTIONAL),
+            'moodleverifiedat' => new \core_external\external_value(PARAM_INT, 'Last successful Moodle verify timestamp', VALUE_OPTIONAL),
             'timecreated' => new \core_external\external_value(PARAM_INT, 'timecreated'),
             'timemodified' => new \core_external\external_value(PARAM_INT, 'timemodified'),
             'createdby' => new \core_external\external_value(PARAM_INT, 'createdby'),
@@ -397,7 +560,8 @@ class academic_course_unit_helper {
     }
 
     /**
-     * Permanently delete a catalogue course unit when safe.
+     * Archive a catalogue Course Unit. Never deletes the Moodle course.
+     * Curriculum relationships are detached first; the unit row is kept as archived.
      *
      * @return array{ok:bool,record?:array,errors?:list}
      */
@@ -407,9 +571,12 @@ class academic_course_unit_helper {
         if (!$row) {
             return ['ok' => false, 'errors' => [['field' => 'id', 'message' => 'Course unit not found']]];
         }
-        // Soft-archive is preferred when Moodle section still exists; hard delete catalogue row only.
-        $formatted = self::format($row);
-        $DB->delete_records('local_btiportal_course_unit', ['id' => $id]);
-        return ['ok' => true, 'record' => $formatted];
+        if ($DB->get_manager()->table_exists(curriculum_unit_helper::TABLE)) {
+            $DB->delete_records(curriculum_unit_helper::TABLE, ['courseunitid' => $id]);
+        }
+        $row->status = 'archived';
+        $row->timemodified = time();
+        $DB->update_record('local_btiportal_course_unit', $row);
+        return ['ok' => true, 'record' => self::format($row)];
     }
 }

@@ -295,8 +295,53 @@ class enrolment_transition_helper {
 
         $role = $DB->get_record('role', ['shortname' => 'student']);
         $roleid = $role ? (int)$role->id : 0;
-        $plugin->enrol_user($instance, $userid, $roleid, time(), 0, ENROL_USER_ACTIVE);
+        $plugin->enrol_user($instance, $userid, $roleid, 0, 0, ENROL_USER_ACTIVE);
         return ['enrolled' => true, 'message' => ''];
+    }
+
+    /**
+     * Enrol or reactivate a student on a Moodle course. Reuses the existing user and enrolment.
+     *
+     * @return array{ok:bool,enrolled:int,reused:int,message:string}
+     */
+    public static function ensure_student_enrolment(int $userid, int $courseid): array {
+        global $DB;
+
+        if ($userid <= 0 || $courseid <= 1) {
+            return ['ok' => false, 'enrolled' => 0, 'reused' => 0, 'message' => 'User or Moodle course is invalid'];
+        }
+        if (!$DB->record_exists('user', ['id' => $userid, 'deleted' => 0])) {
+            return ['ok' => false, 'enrolled' => 0, 'reused' => 0, 'message' => 'Moodle user not found'];
+        }
+        $course = $DB->get_record('course', ['id' => $courseid], '*', IGNORE_MISSING);
+        if (!$course) {
+            return ['ok' => false, 'enrolled' => 0, 'reused' => 0, 'message' => "Moodle course {$courseid} not found"];
+        }
+
+        $context = \context_course::instance($courseid);
+        if (is_enrolled($context, $userid, '', true)) {
+            return ['ok' => true, 'enrolled' => 0, 'reused' => 1, 'message' => 'Already enrolled'];
+        }
+
+        $instance = $DB->get_record('enrol', ['courseid' => $courseid, 'enrol' => 'manual'], '*', IGNORE_MULTIPLE);
+        if (!$instance) {
+            return ['ok' => false, 'enrolled' => 0, 'reused' => 0, 'message' => "No manual enrolment instance for course {$courseid}"];
+        }
+        $plugin = enrol_get_plugin('manual');
+        if (!$plugin) {
+            return ['ok' => false, 'enrolled' => 0, 'reused' => 0, 'message' => 'Manual enrolment plugin unavailable'];
+        }
+
+        $ue = $DB->get_record('user_enrolments', ['enrolid' => $instance->id, 'userid' => $userid]);
+        if ($ue) {
+            $plugin->update_user_enrol($instance, $userid, ENROL_USER_ACTIVE, 0, 0);
+            return ['ok' => true, 'enrolled' => 1, 'reused' => 1, 'message' => 'Enrolment reactivated'];
+        }
+
+        $role = $DB->get_record('role', ['shortname' => 'student']);
+        $roleid = $role ? (int)$role->id : 0;
+        $plugin->enrol_user($instance, $userid, $roleid, 0, 0, ENROL_USER_ACTIVE);
+        return ['ok' => true, 'enrolled' => 1, 'reused' => 0, 'message' => 'Enrolled'];
     }
 
     /**

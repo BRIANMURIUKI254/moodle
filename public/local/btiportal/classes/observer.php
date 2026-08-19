@@ -37,7 +37,7 @@ class observer {
             return;
         }
 
-        // Academic Course Units (and cascaded prereq/teacher rows) for this Moodle course.
+        // Unlink Course Unit Moodle mappings. Catalogue rows are kept.
         try {
             academic_course_unit_helper::delete_for_course($courseid);
         } catch (\Throwable $e) {
@@ -48,6 +48,8 @@ class observer {
             'local_btiportal_unit',
             'local_btiportal_unit_gradeitem',
             'local_btiportal_assignment_meta',
+            'local_btiportal_assessment_meta',
+            'local_btiportal_exam_event',
             'local_btiportal_announcement',
             'local_btiportal_event',
             'local_btiportal_recording',
@@ -78,6 +80,18 @@ class observer {
                 debugging('local_btiportal course_deleted resource cleanup: ' . $e->getMessage(), DEBUG_DEVELOPER);
             }
         }
+
+        if ($DB->get_manager()->table_exists('local_btiportal_exam_flag')) {
+            try {
+                $quizids = $DB->get_fieldset_select('quiz', 'id', 'course = ?', [$courseid]);
+                if (!empty($quizids)) {
+                    list($insql, $params) = $DB->get_in_or_equal(array_map('intval', $quizids));
+                    $DB->delete_records_select('local_btiportal_exam_flag', "quizid {$insql}", $params);
+                }
+            } catch (\Throwable $e) {
+                debugging('local_btiportal course_deleted exam flag cleanup: ' . $e->getMessage(), DEBUG_DEVELOPER);
+            }
+        }
     }
 
     /**
@@ -89,6 +103,23 @@ class observer {
         $other = $event->other ?? [];
         $modulename = (string)($other['modulename'] ?? '');
         $instanceid = (int)($other['instanceid'] ?? 0);
+        $cmid = (int)$event->objectid;
+        try {
+            global $DB;
+            if ($DB->get_manager()->table_exists('local_btiportal_assessment_meta') && $cmid > 0) {
+                $DB->delete_records('local_btiportal_assessment_meta', ['cmid' => $cmid]);
+            }
+            if ($modulename === 'quiz' && $instanceid > 0) {
+                if ($DB->get_manager()->table_exists('local_btiportal_exam_event')) {
+                    $DB->delete_records('local_btiportal_exam_event', ['quizid' => $instanceid]);
+                }
+                if ($DB->get_manager()->table_exists('local_btiportal_exam_flag')) {
+                    $DB->delete_records('local_btiportal_exam_flag', ['quizid' => $instanceid]);
+                }
+            }
+        } catch (\Throwable $e) {
+            debugging('local_btiportal assessment meta cleanup failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
+        }
         if ($modulename !== 'assign' || $instanceid <= 0) {
             return;
         }

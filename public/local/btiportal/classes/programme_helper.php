@@ -58,6 +58,26 @@ class programme_helper {
             return ['ok' => false, 'errors' => $errors];
         }
 
+        if ($moodlecategoryid <= 0) {
+            try {
+                $moodlecategoryid = moodle_catalogue_sync_helper::ensure_programme_category($code, $name);
+                moodle_catalogue_sync_helper::ensure_programme_course_container(
+                    $moodlecategoryid,
+                    $code,
+                    $name,
+                    $description
+                );
+            } catch (\Throwable $e) {
+                return [
+                    'ok' => false,
+                    'errors' => [[
+                        'field' => 'moodlecategoryid',
+                        'message' => 'Could not sync Moodle category/course: ' . $e->getMessage(),
+                    ]],
+                ];
+            }
+        }
+
         $now = time();
         $id = $DB->insert_record('local_btiportal_programme', (object)[
             'code' => $code,

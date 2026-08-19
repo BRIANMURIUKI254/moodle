@@ -9,8 +9,10 @@ defined('MOODLE_INTERNAL') || die();
  * Academic assignments live in local_btiportal_course_unit_teacher. When a unit
  * is mapped to a Moodle topic section, active assignments are also synced into
  * local_btiportal_unit so the Lecturer portal (get_my_teaching_sections,
- * gradebook, content) sees the same teaching load. Moodle enrolments are still
- * managed separately.
+ * gradebook, content) sees the same teaching load. Active assignments also
+ * enrol the existing Moodle user as editingteacher on the mapped Moodle course
+ * so they can create quizzes/assignments in that course only. Duplicate
+ * enrolments are reused. Ordinary lecturers are never made site administrators.
  */
 class course_unit_teacher_helper {
     /**
@@ -111,6 +113,7 @@ class course_unit_teacher_helper {
         }
 
         self::sync_legacy_unit_teacher($courseunitid, $userid, $status);
+        self::enrol_teacher_on_moodle_course($courseunitid, $userid, $status);
 
         return ['ok' => true, 'record' => self::get($id)];
     }
@@ -230,6 +233,7 @@ class course_unit_teacher_helper {
         $row->timeremoved = time();
         $DB->update_record('local_btiportal_course_unit_teacher', $row);
         self::sync_legacy_unit_teacher((int)$row->courseunitid, (int)$row->userid, 'removed');
+        self::enrol_teacher_on_moodle_course((int)$row->courseunitid, (int)$row->userid, 'removed');
         return ['ok' => true, 'record' => self::format($row)];
     }
 
@@ -283,6 +287,43 @@ class course_unit_teacher_helper {
         if ($legacy && (int)$legacy->teacheruserid === $userid) {
             unit_helper::remove_unit_teacher($courseid, $sectionid);
         }
+    }
+
+    /**
+     * Enrol the lecturer as Moodle editingteacher on the unit's mapped course.
+     * Reuses the existing Moodle user and existing enrolment. Course-scoped only —
+     * does not grant site administrator.
+     */
+    private static function enrol_teacher_on_moodle_course(int $courseunitid, int $userid, string $status): void {
+        global $DB;
+
+        $unit = $DB->get_record('local_btiportal_course_unit', ['id' => $courseunitid], 'id,courseid');
+        if (!$unit) {
+            return;
+        }
+        $courseid = (int)$unit->courseid;
+        if ($courseid <= 1 || !$DB->record_exists('course', ['id' => $courseid])) {
+            return;
+        }
+
+        if ($status === 'active') {
+            lecturer_teaching_helper::ensure_editing_teacher_for_assigned_course($userid, $courseid);
+            return;
+        }
+
+        $stillteaching = $DB->record_exists_sql(
+            "SELECT 1
+               FROM {local_btiportal_course_unit_teacher} cut
+               JOIN {local_btiportal_course_unit} cu ON cu.id = cut.courseunitid
+              WHERE cut.userid = :userid
+                AND cut.status = 'active'
+                AND cu.courseid = :courseid",
+            ['userid' => $userid, 'courseid' => $courseid]
+        );
+        if ($stillteaching) {
+            return;
+        }
+        lecturer_teaching_helper::remove_moodle_course($userid, $courseid, false);
     }
 
     /**

@@ -22,8 +22,8 @@ class create_academic_course_unit extends external_api {
             'curriculumid' => new external_value(PARAM_INT, 'Curriculum id'),
             'yearofstudy' => new external_value(PARAM_INT, 'Year of study'),
             'semestersequence' => new external_value(PARAM_INT, 'Curriculum semester sequence'),
-            'courseid' => new external_value(PARAM_INT, 'Moodle course id'),
-            'sectionid' => new external_value(PARAM_INT, 'Moodle section id'),
+            'courseid' => new external_value(PARAM_INT, 'Moodle course id (0 = auto-create)', VALUE_DEFAULT, 0),
+            'sectionid' => new external_value(PARAM_INT, 'Moodle section id (0 = auto-create)', VALUE_DEFAULT, 0),
             'credithours' => new external_value(PARAM_FLOAT, 'Credit hours'),
             'unittype' => new external_value(PARAM_ALPHANUMEXT, 'core|elective|optional', VALUE_DEFAULT, 'core'),
             'status' => new external_value(PARAM_ALPHANUMEXT, 'Status', VALUE_DEFAULT, 'draft'),
@@ -32,7 +32,7 @@ class create_academic_course_unit extends external_api {
     }
     public static function execute(
         string $code, string $name, string $description, int $programmeid, int $curriculumid,
-        int $yearofstudy, int $semestersequence, int $courseid, int $sectionid, float $credithours,
+        int $yearofstudy, int $semestersequence, int $courseid = 0, int $sectionid = 0, float $credithours = 0.0,
         string $unittype = 'core', string $status = 'draft', bool $isrequired = true
     ): array {
         global $USER;
@@ -40,7 +40,11 @@ class create_academic_course_unit extends external_api {
             'code', 'name', 'description', 'programmeid', 'curriculumid', 'yearofstudy',
             'semestersequence', 'courseid', 'sectionid', 'credithours', 'unittype', 'status', 'isrequired'
         ));
-        academic_auth_helper::require_course_unit_write((int)$params['courseid']);
+        if ((int)$params['courseid'] > 1) {
+            academic_auth_helper::require_course_unit_write((int)$params['courseid']);
+        } else {
+            academic_auth_helper::require_manage_academic();
+        }
         $result = academic_course_unit_helper::create($params, (int)$USER->id);
         if (!$result['ok']) {
             return academic_api_response::for_external(academic_api_response::fail($result['errors']));

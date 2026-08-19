@@ -56,7 +56,7 @@ class academic_enrolment_helper {
                     }
                     break;
                 case 'unmapped':
-                    $row['reason'] = 'Course Unit has no Moodle Course mapping';
+                    $row['reason'] = 'Course Unit is not mapped to Moodle.';
                     $skipped[] = $row;
                     break;
                 case 'missing_moodle_course':
@@ -208,23 +208,8 @@ class academic_enrolment_helper {
      * @return array{ok:bool,message:string}
      */
     private static function enrol_student(int $userid, int $courseid): array {
-        global $DB;
-
-        if ($courseid <= 1 || !$DB->record_exists('course', ['id' => $courseid])) {
-            return ['ok' => false, 'message' => "Moodle course {$courseid} not found"];
-        }
-        $instance = $DB->get_record('enrol', ['courseid' => $courseid, 'enrol' => 'manual'], '*', IGNORE_MULTIPLE);
-        if (!$instance) {
-            return ['ok' => false, 'message' => "No manual enrolment instance for course {$courseid}"];
-        }
-        $plugin = enrol_get_plugin('manual');
-        if (!$plugin) {
-            return ['ok' => false, 'message' => 'Manual enrolment plugin unavailable'];
-        }
-        $role = $DB->get_record('role', ['shortname' => 'student']);
-        $roleid = $role ? (int)$role->id : 0;
-        $plugin->enrol_user($instance, $userid, $roleid, time(), 0, ENROL_USER_ACTIVE);
-        return ['ok' => true, 'message' => 'Enrolled'];
+        $result = enrolment_transition_helper::ensure_student_enrolment($userid, $courseid);
+        return ['ok' => !empty($result['ok']), 'message' => (string)($result['message'] ?? '')];
     }
 
     public static function get_operation(int $id): ?array {

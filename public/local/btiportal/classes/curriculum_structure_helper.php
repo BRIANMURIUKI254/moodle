@@ -377,4 +377,50 @@ class curriculum_structure_helper {
             'usermodified' => new \core_external\external_value(PARAM_INT, 'usermodified'),
         ];
     }
+
+    /**
+     * Create curriculum year/semester rows when missing. Does not delete anything.
+     */
+    public static function ensure_year_and_semester(
+        int $curriculumid,
+        int $yearnumber,
+        int $semesternumber,
+        int $userid = 0
+    ): void {
+        global $DB;
+
+        if ($curriculumid <= 0 || $yearnumber <= 0 || $semesternumber <= 0) {
+            return;
+        }
+        $year = $DB->get_record('local_btiportal_curriculum_year', [
+            'curriculumid' => $curriculumid,
+            'yearnumber' => $yearnumber,
+        ]);
+        if (!$year) {
+            $created = self::create_year([
+                'curriculumid' => $curriculumid,
+                'yearnumber' => $yearnumber,
+                'name' => 'Year ' . $yearnumber,
+                'status' => 'active',
+            ], $userid);
+            $yearid = !empty($created['ok']) ? (int)$created['record']['id'] : 0;
+        } else {
+            $yearid = (int)$year->id;
+        }
+        if ($yearid <= 0) {
+            return;
+        }
+        if ($DB->record_exists('local_btiportal_curriculum_semester', [
+            'curriculumyearid' => $yearid,
+            'semesternumber' => $semesternumber,
+        ])) {
+            return;
+        }
+        self::create_semester([
+            'curriculumyearid' => $yearid,
+            'semesternumber' => $semesternumber,
+            'name' => 'Semester ' . $semesternumber,
+            'status' => 'active',
+        ], $userid);
+    }
 }

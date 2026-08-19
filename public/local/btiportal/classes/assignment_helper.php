@@ -156,6 +156,23 @@ class assignment_helper {
 
         $mapping = gradebook_helper::map_grade_item($courseid, $unitid, (int)$gi->id);
         assignment_meta_helper::save($assignmentid, $courseid, $unitid, $category);
+        $type = match ($category) {
+            assignment_meta_helper::CATEGORY_CAT => assessment_helper::TYPE_CAT,
+            assignment_meta_helper::CATEGORY_EXAM => assessment_helper::TYPE_FINAL,
+            default => assessment_helper::TYPE_ASSIGNMENT,
+        };
+        assessment_helper::save_meta(
+            $cmid,
+            $courseid,
+            $unitid,
+            assessment_helper::MODULE_ASSIGN,
+            $assignmentid,
+            $type,
+            0,
+            0,
+            3,
+            assessment_helper::ACTION_SUBMIT_FLAG
+        );
 
         return [
             'courseid' => $courseid,

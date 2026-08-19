@@ -91,6 +91,31 @@ class curriculum_delivery_helper {
     ): array {
         global $DB;
 
+        if (curriculum_unit_helper::table_exists()) {
+            $assigned = curriculum_unit_helper::list_assignments($curriculumid);
+            $out = [];
+            foreach ($assigned as $unit) {
+                if ((int)($unit['yearofstudy'] ?? 0) !== $yearnumber
+                    || (int)($unit['semestersequence'] ?? 0) !== $semesternumber) {
+                    continue;
+                }
+                $unitstatus = strtolower((string)($unit['status'] ?? ''));
+                if ($status !== null && $status !== '' && $status !== 'all') {
+                    if ($unitstatus !== strtolower($status)) {
+                        continue;
+                    }
+                } else if ($unitstatus === 'archived') {
+                    continue;
+                }
+                $out[] = $unit;
+            }
+            if ($out) {
+                return $out;
+            }
+            // Course Management still stores home-curriculum on the unit row.
+            // If junction rows were never written, fall back so students are not left with an empty pathway.
+        }
+
         $params = [
             'curriculumid' => $curriculumid,
             'yearofstudy' => $yearnumber,
@@ -372,6 +397,9 @@ class curriculum_delivery_helper {
             'moodlecourseshortname' => new \core_external\external_value(PARAM_TEXT, 'moodlecourseshortname'),
             'moodlevisible' => new \core_external\external_value(PARAM_INT, 'moodlevisible'),
             'activelecturercount' => new \core_external\external_value(PARAM_INT, 'activelecturercount'),
+            'sortorder' => new \core_external\external_value(PARAM_INT, 'sortorder', VALUE_OPTIONAL),
+            'assignmentid' => new \core_external\external_value(PARAM_INT, 'assignmentid', VALUE_OPTIONAL),
+            'assignmentcurriculumid' => new \core_external\external_value(PARAM_INT, 'assignmentcurriculumid', VALUE_OPTIONAL),
         ]);
     }
 

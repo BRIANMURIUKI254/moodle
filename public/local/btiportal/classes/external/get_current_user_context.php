@@ -34,10 +34,15 @@ class get_current_user_context extends external_api {
         if ($primarydeptid === 0 && $leadership) {
             $primarydeptid = (int)$leadership[0]['departmentid'];
         }
+        $email = trim((string) ($USER->email ?? ''));
+        if ($email === '' || !validate_email($email)) {
+            // PARAM_EMAIL would abort login after token.php already succeeded.
+            $email = '';
+        }
         return [
             'roles' => array_values($roles),
             'issiteadmin' => is_siteadmin($USER),
-            'email' => $USER->email,
+            'email' => $email,
             'forcepasswordchange' => $forcepasswordchange,
             'isuniversityadmin' => department_auth_helper::is_university_admin((int)$USER->id),
             'isdepartmentleader' => !empty($leadership),
@@ -50,7 +55,7 @@ class get_current_user_context extends external_api {
         return new external_single_structure([
             'roles' => new external_multiple_structure(new external_value(PARAM_ALPHANUMEXT, 'Moodle role shortname')),
             'issiteadmin' => new external_value(PARAM_BOOL, 'Whether the current user is a site administrator'),
-            'email' => new external_value(PARAM_EMAIL, 'User email address'),
+            'email' => new external_value(PARAM_RAW_TRIMMED, 'User email address', VALUE_DEFAULT, ''),
             'forcepasswordchange' => new external_value(PARAM_BOOL, 'Whether the user must change password on next login'),
             'isuniversityadmin' => new external_value(PARAM_BOOL, 'University academic/operational admin'),
             'isdepartmentleader' => new external_value(PARAM_BOOL, 'Has active Department Leader assignment'),

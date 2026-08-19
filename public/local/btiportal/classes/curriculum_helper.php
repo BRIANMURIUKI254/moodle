@@ -162,15 +162,8 @@ class curriculum_helper {
         if (!$row) {
             return ['ok' => false, 'errors' => [['field' => 'id', 'message' => 'Curriculum not found']]];
         }
-        if ($DB->record_exists('local_btiportal_course_unit', ['curriculumid' => $id])) {
-            return [
-                'ok' => false,
-                'errors' => [[
-                    'field' => 'id',
-                    'message' => 'Cannot delete a curriculum that still has course units. Remove those units first.',
-                ]],
-            ];
-        }
+        // Course Units are shared catalogue records. Deleting a curriculum only
+        // detaches relationships — it must never delete Course Units or Moodle courses.
         if ($DB->record_exists('local_btiportal_student_profile', ['curriculumid' => $id])) {
             return [
                 'ok' => false,
@@ -197,6 +190,11 @@ class curriculum_helper {
                 }
             }
         }
+
+        if ($DB->get_manager()->table_exists(curriculum_unit_helper::TABLE)) {
+            $DB->delete_records(curriculum_unit_helper::TABLE, ['curriculumid' => $id]);
+        }
+        $DB->set_field('local_btiportal_course_unit', 'curriculumid', 0, ['curriculumid' => $id]);
 
         $years = $DB->get_records('local_btiportal_curriculum_year', ['curriculumid' => $id], '', 'id');
         foreach ($years as $year) {

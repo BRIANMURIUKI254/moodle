@@ -19,11 +19,27 @@ class gradebook_helper {
         if ($userid <= 0 || $courseid <= 0 || $unitid <= 0) {
             return false;
         }
-        return $DB->record_exists('local_btiportal_unit', [
+        if ($DB->record_exists('local_btiportal_unit', [
             'courseid' => $courseid,
             'sectionid' => $unitid,
             'teacheruserid' => $userid,
-        ]);
+        ])) {
+            return true;
+        }
+        return $DB->record_exists_sql(
+            "SELECT 1
+               FROM {local_btiportal_course_unit_teacher} t
+               JOIN {local_btiportal_course_unit} cu ON cu.id = t.courseunitid
+              WHERE t.userid = :userid
+                AND t.status = 'active'
+                AND cu.courseid = :courseid
+                AND cu.sectionid = :sectionid",
+            [
+                'userid' => $userid,
+                'courseid' => $courseid,
+                'sectionid' => $unitid,
+            ]
+        );
     }
 
     /**

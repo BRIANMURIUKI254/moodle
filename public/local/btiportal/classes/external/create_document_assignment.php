@@ -9,6 +9,7 @@ use core_external\external_single_structure;
 use core_external\external_value;
 use local_btiportal\assignment_helper;
 use local_btiportal\gradebook_helper;
+use local_btiportal\lecturer_teaching_helper;
 
 /**
  * Create a Moodle assignment (file submission) in a unit and map its grade item.
@@ -95,12 +96,13 @@ class create_document_assignment extends external_api {
         self::validate_context($context);
 
         gradebook_helper::require_unit_teacher((int)$USER->id, $courseid, $unitid);
+        lecturer_teaching_helper::ensure_editing_teacher_for_assigned_course((int)$USER->id, $courseid);
 
         if (!has_capability('moodle/course:manageactivities', $context)
             && !has_capability('mod/assign:addinstance', $context)
             && !is_siteadmin()
         ) {
-            throw new \moodle_exception('nopermissions', 'error', '', 'create assignment');
+            throw new \moodle_exception('teachingpermissioninactive', 'local_btiportal');
         }
 
         return assignment_helper::create_document_assignment(

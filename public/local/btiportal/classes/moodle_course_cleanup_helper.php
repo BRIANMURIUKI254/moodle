@@ -30,6 +30,8 @@ class moodle_course_cleanup_helper {
             'local_btiportal_recording' => 'courseid',
             'local_btiportal_certificate' => 'courseid',
             'local_btiportal_assignment_meta' => 'courseid',
+            'local_btiportal_assessment_meta' => 'courseid',
+            'local_btiportal_exam_event' => 'courseid',
             'local_btiportal_inactive_alert' => 'courseid',
             'local_btiportal_unit' => 'courseid',
             'local_btiportal_unit_gradeitem' => 'courseid',

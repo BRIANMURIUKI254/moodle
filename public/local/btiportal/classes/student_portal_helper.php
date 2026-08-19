@@ -224,6 +224,8 @@ class student_portal_helper {
         $unitpathway = student_unit_pathway_helper::get_pathway($userid);
         $unitpathway['advanced'] = !empty($sync['advanced']) ? 1 : 0;
         $unitpathway['advancenotice'] = (string)($sync['notice'] ?? '');
+        student_course_access_helper::ensure_pathway_enrolments($userid);
+        $unitpathway = student_course_access_helper::annotate_pathway($userid, $unitpathway);
 
         $deliverystatus = self::delivery_status_from_plan($plan);
 
