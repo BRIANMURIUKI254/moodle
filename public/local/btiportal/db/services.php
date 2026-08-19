@@ -1503,7 +1503,16 @@ $functions = [
     ],
 ];
 
-$services = [
+// NOTE: The bti_portal_api external service is created manually in Moodle admin UI,
+// not declared here. Declaring it here would cause installexistingserviceshortnameerror
+// if it already exists in the database. Functions are linked to that service via
+// upgrade.php steps instead.
+//
+// $services is intentionally empty — do not add a service block here.
+$services = [];
+
+/* DISABLED — kept for reference only.
+$services_disabled = [
     'BTI Portal local extensions' => [
         'functions' => [
             'local_btiportal_get_current_user_context',
@@ -1704,6 +1713,7 @@ $services = [
         ],
         'restrictedusers' => 0,
         'enabled' => 1,
-        'shortname' => 'btiportal_local',
+        'shortname' => 'bti_portal_api',
     ],
-];
+]; // end $services_disabled
+*/

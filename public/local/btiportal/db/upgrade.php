@@ -154,8 +154,8 @@ function xmldb_local_btiportal_upgrade($oldversion) {
             }
         }
 
-        // Also attach to the plugin's own service if present.
-        $localservice = $DB->get_record('external_services', ['shortname' => 'btiportal_local'], '*', IGNORE_MISSING);
+        // Also attach to the plugin's own service if present (shortname is bti_portal_api).
+        $localservice = $DB->get_record('external_services', ['shortname' => 'bti_portal_api'], '*', IGNORE_MISSING);
         if ($localservice) {
             foreach ($fns as $fn) {
                 if (!$DB->record_exists('external_services_functions', [
@@ -633,17 +633,7 @@ function xmldb_local_btiportal_upgrade($oldversion) {
         if (!$DB->record_exists('external_functions', ['name' => $fn])) {
             // services.php is re-read on upgrade; ensure function is linked to our service.
         }
-        $service = $DB->get_record('external_services', ['shortname' => 'btiportal_local']);
-        if ($service && !$DB->record_exists('external_services_functions', [
-            'externalserviceid' => $service->id,
-            'functionname' => $fn,
-        ])) {
-            $DB->insert_record('external_services_functions', (object) [
-                'externalserviceid' => $service->id,
-                'functionname' => $fn,
-            ]);
-        }
-        // Also attach to the main portal API service if present.
+        // btiportal_local was the old shortname; the canonical shortname is bti_portal_api.
         $apiservice = $DB->get_record('external_services', ['shortname' => 'bti_portal_api']);
         if ($apiservice && !$DB->record_exists('external_services_functions', [
             'externalserviceid' => $apiservice->id,
@@ -2491,6 +2481,19 @@ function xmldb_local_btiportal_upgrade($oldversion) {
     if ($oldversion < 2026081902) {
         // Defensive migration hardening: some installs may not have legacy course_unit.
         upgrade_plugin_savepoint(true, 2026081902, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026081903) {
+        // Fix shortname mismatch: db/services.php declared 'btiportal_local' but the canonical
+        // service shortname used by the frontend and service_auth_helper is 'bti_portal_api'.
+        // Rename the service record if the wrong shortname still exists in the database.
+        $wrong = $DB->get_record('external_services', ['shortname' => 'btiportal_local'], '*', IGNORE_MISSING);
+        $correct = $DB->get_record('external_services', ['shortname' => 'bti_portal_api'], '*', IGNORE_MISSING);
+        if ($wrong && !$correct) {
+            // Rename it in-place — all existing tokens/functions linked to the service id are preserved.
+            $DB->set_field('external_services', 'shortname', 'bti_portal_api', ['id' => $wrong->id]);
+        }
+        upgrade_plugin_savepoint(true, 2026081903, 'local', 'btiportal');
     }
 
     return true;
