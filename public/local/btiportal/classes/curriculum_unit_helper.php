@@ -227,6 +227,10 @@ class curriculum_unit_helper {
         if (!self::table_exists()) {
             return 0;
         }
+        $dbman = $DB->get_manager();
+        if (!$dbman->table_exists('local_btiportal_course_unit')) {
+            return 0;
+        }
         $inserted = 0;
         $units = $DB->get_records_select('local_btiportal_course_unit', 'curriculumid > 0', [], 'id ASC');
         foreach ($units as $unit) {

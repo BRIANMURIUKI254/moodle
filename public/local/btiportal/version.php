@@ -2,7 +2,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_btiportal';
-$plugin->version   = 2026081901;
+$plugin->version   = 2026081902;
 $plugin->requires  = 2024041600;
 $plugin->maturity  = MATURITY_STABLE;
-$plugin->release   = '1.10.3';
+$plugin->release   = '1.10.4';

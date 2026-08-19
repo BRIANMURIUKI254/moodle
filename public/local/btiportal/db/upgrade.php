@@ -2488,5 +2488,10 @@ function xmldb_local_btiportal_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026081901, 'local', 'btiportal');
     }
 
+    if ($oldversion < 2026081902) {
+        // Defensive migration hardening: some installs may not have legacy course_unit.
+        upgrade_plugin_savepoint(true, 2026081902, 'local', 'btiportal');
+    }
+
     return true;
 }
