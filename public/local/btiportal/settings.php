@@ -9,4 +9,11 @@ if ($hassiteconfig && isset($ADMIN) && $ADMIN->fulltree && isset($settings) && $
         '',
         PARAM_RAW_TRIMMED
     ));
+    $settings->add(new admin_setting_configtext(
+        'local_btiportal/portalurl',
+        get_string('portalurl', 'local_btiportal'),
+        get_string('portalurl_desc', 'local_btiportal'),
+        '',
+        PARAM_RAW_TRIMMED
+    ));
 }

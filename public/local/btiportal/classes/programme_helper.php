@@ -221,6 +221,16 @@ class programme_helper {
                 ]],
             ];
         }
+        if ($DB->get_manager()->table_exists('local_btiportal_student_profile')
+            && $DB->record_exists('local_btiportal_student_profile', ['programmeid' => $id])) {
+            return [
+                'ok' => false,
+                'errors' => [[
+                    'field' => 'id',
+                    'message' => 'Cannot delete a course that still has students linked to it. Move or withdraw those students first.',
+                ]],
+            ];
+        }
 
         $formatted = self::format($row);
         $DB->delete_records('local_btiportal_programme', ['id' => $id]);
