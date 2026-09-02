@@ -57,6 +57,17 @@ class send_login_notifications extends adhoc_task {
         $logintime = userdate($customdata->logintime);
 
         $changepasswordlink = (new \moodle_url('/user/preferences.php', ['userid' => $USER->id]))->out(false);
+        // Prefer the external portal frontend when configured. This routes users to the app's
+        // /change-password screen instead of Moodle's internal change-password page.
+        $portalbase = trim((string)get_config('local_btiportal', 'portalurl'));
+        if ($portalbase === '') {
+            $portalbase = rtrim((string)$CFG->wwwroot, '/');
+        }
+        $portalbase = rtrim(preg_replace('#/login/?$#i', '', $portalbase ?: ''), '/');
+        if ($portalbase !== '') {
+            $changepasswordlink = $portalbase . '/change-password';
+        }
+
         // Find a better final URL for changing password.
         $userauth = \core\di::get(\core\authentication::class)->get_plugin($USER->auth);
         if ($userauth->can_change_password()) {

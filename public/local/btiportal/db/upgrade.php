@@ -2573,5 +2573,19 @@ function xmldb_local_btiportal_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026082100, 'local', 'btiportal');
     }
 
+    if ($oldversion < 2026082400) {
+        // Align local_btiportal_unit.timecreated with Moodle convention (NOT NULL DEFAULT 0).
+        // Does not backfill existing rows; new inserts that omit the column will no longer fail.
+        $dbman = $DB->get_manager();
+        $table = new xmldb_table('local_btiportal_unit');
+        if ($dbman->table_exists($table)) {
+            $field = new xmldb_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            if ($dbman->field_exists($table, $field)) {
+                $dbman->change_field_default($table, $field);
+            }
+        }
+        upgrade_plugin_savepoint(true, 2026082400, 'local', 'btiportal');
+    }
+
     return true;
 }

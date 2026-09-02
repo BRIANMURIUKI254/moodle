@@ -266,6 +266,7 @@ class zoom_link_helper {
             'sectionid' => $sectionid,
             'teacheruserid' => $teacheruserid,
             'zoomcmid' => $cmid,
+            'timecreated' => time(),
         ]);
     }
 

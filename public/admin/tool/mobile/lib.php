@@ -226,6 +226,6 @@ function tool_mobile_pre_processor_message_send($procname, $data) {
             return;
         }
 
-        $data->fullmessagehtml .= html_writer::tag('p', get_string('readingthisemailgettheapp', 'tool_mobile', $url->out()));
+        // Intentionally not appending the mobile app callout to portal emails.
     }
 }

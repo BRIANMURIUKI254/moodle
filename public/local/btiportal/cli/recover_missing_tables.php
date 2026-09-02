@@ -60,7 +60,7 @@ $tables['local_btiportal_unit'] = "
         sectionid INT NOT NULL,
         teacheruserid INT NOT NULL,
         zoomcmid BIGINT NOT NULL DEFAULT 0,
-        timecreated INT NOT NULL,
+        timecreated INT NOT NULL DEFAULT 0,
         UNIQUE KEY unit_course_section (courseid, sectionid)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
 
