@@ -81,7 +81,7 @@ class certificate_pdf_helper {
         $pdf->SetTextColor(...self::NAVY);
         $pdf->SetFont('times', 'B', 13);
         $pdf->SetXY(20, 46);
-        $pdf->Cell($w - 40, 6, 'B TI LMS', 0, 1, 'C');
+        $pdf->Cell($w - 40, 6, 'bti LMS', 0, 1, 'C');
 
         $pdf->SetFont('helvetica', 'B', 6.5);
         $pdf->SetTextColor(...self::NAVY);

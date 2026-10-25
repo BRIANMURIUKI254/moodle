@@ -901,7 +901,7 @@ class assessment_helper {
                 'questiontext' => (string)$question->questiontext,
                 'maxmark' => (float)$qa->get_max_mark(),
                 'status' => (string)$qa->get_state_class(true),
-                'answered' => !$qa->get_state()->is_blank(),
+                'answered' => $qa->get_state() !== \question_state::$todo,
                 'flagged' => $qa->is_flagged() ? 1 : 0,
                 'prefix' => $prefix,
                 'sequencecheck' => (int)$qa->get_sequence_check_count(),

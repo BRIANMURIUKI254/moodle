@@ -47,7 +47,8 @@ class portal_role_helper {
         $canviewacademic = has_capability('local/btiportal:viewacademic', $syscontext, $userid);
 
         $hasteacherrole = in_array('editingteacher', $roleslower, true)
-            || in_array('teacher', $roleslower, true);
+            || in_array('teacher', $roleslower, true)
+            || in_array('lecturer', $roleslower, true);
         $teachingsections = unit_helper::get_my_teaching_sections($userid);
         $hasteachingsections = !empty($teachingsections);
         $isinstructor = $hasteacherrole || $hasteachingsections;

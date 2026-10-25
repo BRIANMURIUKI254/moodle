@@ -32,7 +32,7 @@ class content_helper {
         $roles = get_user_roles($context, $userid, true);
         foreach ($roles as $role) {
             $short = $role->shortname ?? '';
-            if (in_array($short, ['editingteacher', 'teacher', 'manager', 'coursecreator'], true)) {
+            if (in_array($short, ['editingteacher', 'teacher', 'lecturer', 'manager', 'coursecreator'], true)) {
                 return true;
             }
         }
@@ -578,18 +578,20 @@ class content_helper {
             $fs = get_file_storage();
             $files = $fs->get_area_files($context->id, 'local_btiportal', 'resource', $id, 'filename', false);
             $stored = reset($files);
-            if ($stored) {
-                $url = \moodle_url::make_webservice_pluginfile_url(
-                    $context->id,
-                    'local_btiportal',
-                    'resource',
-                    $id,
-                    '/',
-                    $stored->get_filename()
-                );
-                $DB->set_field('local_btiportal_resource', 'link', $url->out(false), ['id' => $id]);
-                $DB->set_field('local_btiportal_resource', 'filename', $stored->get_filename(), ['id' => $id]);
+            if (!$stored) {
+                $DB->delete_records('local_btiportal_resource', ['id' => $id]);
+                throw new \moodle_exception('errorcreatingfile', 'repository');
             }
+            $url = \moodle_url::make_webservice_pluginfile_url(
+                $context->id,
+                'local_btiportal',
+                'resource',
+                $id,
+                '/',
+                $stored->get_filename()
+            );
+            $DB->set_field('local_btiportal_resource', 'link', $url->out(false), ['id' => $id]);
+            $DB->set_field('local_btiportal_resource', 'filename', $stored->get_filename(), ['id' => $id]);
         }
 
         return self::format_resource(
@@ -892,6 +894,29 @@ class content_helper {
         global $DB;
         $author = $DB->get_record('user', ['id' => $r->authorid], 'id,firstname,lastname');
         $course = $DB->get_record('course', ['id' => $r->courseid], 'id,shortname,fullname');
+        $link = (string)($r->link ?? '');
+        $filename = (string)($r->filename ?? '');
+        if ($link === '' && $filename !== '') {
+            $context = \context_system::instance();
+            $file = get_file_storage()->get_file(
+                $context->id,
+                'local_btiportal',
+                'resource',
+                (int)$r->id,
+                '/',
+                $filename
+            );
+            if ($file && !$file->is_directory()) {
+                $link = \moodle_url::make_webservice_pluginfile_url(
+                    $context->id,
+                    'local_btiportal',
+                    'resource',
+                    (int)$r->id,
+                    '/',
+                    $filename
+                )->out(false);
+            }
+        }
         $completed = $DB->record_exists('local_btiportal_resource_completion', [
             'resourceid' => $r->id,
             'userid' => $userid,
@@ -906,8 +931,8 @@ class content_helper {
             'authorname' => $author ? trim($author->firstname . ' ' . $author->lastname) : '',
             'title' => $r->title,
             'description' => $r->description ?? '',
-            'link' => $r->link ?? '',
-            'filename' => $r->filename ?? '',
+            'link' => $link,
+            'filename' => $filename,
             'completed' => $completed,
             'timecreated' => (int)$r->timecreated,
         ];

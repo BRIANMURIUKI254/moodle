@@ -2587,5 +2587,10 @@ function xmldb_local_btiportal_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026082400, 'local', 'btiportal');
     }
 
+    if ($oldversion < 2026101500) {
+        // Apply the corrected attempt-question state handling in assessment_helper.
+        upgrade_plugin_savepoint(true, 2026101500, 'local', 'btiportal');
+    }
+
     return true;
 }
