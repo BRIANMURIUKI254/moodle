@@ -89,7 +89,17 @@ class assessment_helper {
     }
 
     /**
-     * Create a Moodle quiz with questions and portal assessment metadata.
+     * Require the Moodle capabilities used to add a quiz and its questions.
+     */
+    public static function require_quiz_creation_capabilities(\context_course $context): void {
+        if (!has_capability('moodle/course:manageactivities', $context)
+            || !has_capability('moodle/question:add', $context)) {
+            throw new \moodle_exception('missingquizcapability', 'local_btiportal');
+        }
+    }
+
+    /**
+     * Create a Moodle quiz, serializing Final Exam requests to make retries safe.
      *
      * @param array $questions Decoded question objects from the portal editor
      * @return array<string,mixed>
@@ -113,12 +123,105 @@ class assessment_helper {
         string $warningaction,
         array $questions
     ): array {
-        global $DB;
+        $assessmenttype = self::normalize_type($assessmenttype);
+        if ($assessmenttype !== self::TYPE_FINAL) {
+            return self::create_quiz_assessment_unlocked(
+                $courseid,
+                $unitid,
+                $name,
+                $intro,
+                $assessmenttype,
+                $grademax,
+                $passmark,
+                $timeopen,
+                $timeclose,
+                $timelimit,
+                $maxattempts,
+                $shufflequestions,
+                $shuffleanswers,
+                $requirefullscreen,
+                $maxwarnings,
+                $warningaction,
+                $questions
+            );
+        }
+
+        global $USER;
+        $lockkey = 'final-' . hash('sha256', serialize([
+            (int)$USER->id,
+            $courseid,
+            $unitid,
+            trim($name),
+        ]));
+        $lockfactory = \core\lock\lock_config::get_lock_factory('local_btiportal');
+        $lock = $lockfactory->get_lock($lockkey, 10);
+        if (!$lock) {
+            throw new \moodle_exception('quizcreationbusy', 'local_btiportal');
+        }
+
+        try {
+            return self::create_quiz_assessment_unlocked(
+                $courseid,
+                $unitid,
+                $name,
+                $intro,
+                $assessmenttype,
+                $grademax,
+                $passmark,
+                $timeopen,
+                $timeclose,
+                $timelimit,
+                $maxattempts,
+                $shufflequestions,
+                $shuffleanswers,
+                $requirefullscreen,
+                $maxwarnings,
+                $warningaction,
+                $questions
+            );
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * Create a quiz and its question/grade metadata after authorization.
+     *
+     * @param array $questions Decoded question objects from the portal editor
+     * @return array<string,mixed>
+     */
+    private static function create_quiz_assessment_unlocked(
+        int $courseid,
+        int $unitid,
+        string $name,
+        string $intro,
+        string $assessmenttype,
+        float $grademax,
+        float $passmark,
+        int $timeopen,
+        int $timeclose,
+        int $timelimit,
+        int $maxattempts,
+        int $shufflequestions,
+        int $shuffleanswers,
+        int $requirefullscreen,
+        int $maxwarnings,
+        string $warningaction,
+        array $questions
+    ): array {
+        global $DB, $USER;
 
         $assessmenttype = self::normalize_type($assessmenttype);
         $warningaction = self::normalize_action($warningaction);
         if (!self::uses_quiz($assessmenttype)) {
             throw new \invalid_parameter_exception('Use the assignment endpoint for assignment type');
+        }
+        $isfinal = $assessmenttype === self::TYPE_FINAL;
+        if ($isfinal && $unitid !== 0) {
+            throw new \invalid_parameter_exception('Final exams must not be associated with a course unit');
+        }
+        if (!$isfinal && $unitid <= 0) {
+            throw new \invalid_parameter_exception('A course unit is required for this assessment type');
         }
         if ($maxwarnings < 0) {
             $maxwarnings = 0;
@@ -128,10 +231,15 @@ class assessment_helper {
         }
 
         $course = get_course($courseid);
-        $section = $DB->get_record('course_sections', [
-            'id' => $unitid,
-            'course' => $courseid,
-        ], '*', MUST_EXIST);
+        $section = $isfinal
+            ? $DB->get_record('course_sections', [
+                'course' => $courseid,
+                'section' => 0,
+            ], '*', MUST_EXIST)
+            : $DB->get_record('course_sections', [
+                'id' => $unitid,
+                'course' => $courseid,
+            ], '*', MUST_EXIST);
 
         $name = trim($name);
         if ($name === '') {
@@ -147,17 +255,96 @@ class assessment_helper {
         if ($grademax <= 0) {
             $grademax = 100.0;
         }
+        if ($isfinal && ($passmark < 0 || $passmark > $grademax)) {
+            throw new \invalid_parameter_exception('Final exam pass mark must be within the grade range');
+        }
         $passmark = max(0.0, $passmark);
         $timeopen = max(0, $timeopen);
         $timeclose = max(0, $timeclose);
+        if ($isfinal && ($timeopen === 0 || $timeclose === 0)) {
+            throw new \invalid_parameter_exception('Final exams require start and end times');
+        }
         $timelimit = max(0, $timelimit);
         if ($timeclose > 0 && $timeopen > 0 && $timeclose < $timeopen) {
             throw new \invalid_parameter_exception('End time must be after the start time');
         }
 
+        $requestid = '';
+        if ($isfinal) {
+            $requestid = 'bti-final-' . hash('sha256', serialize([
+                (int)$USER->id,
+                $courseid,
+                $unitid,
+                $name,
+                $intro,
+                $assessmenttype,
+                $grademax,
+                $passmark,
+                $timeopen,
+                $timeclose,
+                $timelimit,
+                $maxattempts,
+                $shufflequestions,
+                $shuffleanswers,
+                $requirefullscreen,
+                $maxwarnings,
+                $warningaction,
+                $questions,
+            ]));
+            $existing = $DB->get_record_sql(
+                "SELECT cm.id AS cmid, cm.instance AS quizid, q.name, q.intro,
+                        q.timeopen, q.timeclose, q.timelimit, q.attempts, q.grade,
+                        gi.id AS gradeitemid, gi.grademax
+                   FROM {course_modules} cm
+                   JOIN {modules} m ON m.id = cm.module AND m.name = :modname
+                   JOIN {quiz} q ON q.id = cm.instance AND q.course = cm.course
+              LEFT JOIN {grade_items} gi ON gi.courseid = cm.course
+                    AND gi.itemtype = :itemtype AND gi.itemmodule = :itemmodule
+                    AND gi.iteminstance = q.id AND gi.itemnumber = 0
+                  WHERE cm.course = :courseid
+                    AND cm.idnumber = :requestid",
+                [
+                    'modname' => self::MODULE_QUIZ,
+                    'itemtype' => 'mod',
+                    'itemmodule' => self::MODULE_QUIZ,
+                    'courseid' => $courseid,
+                    'requestid' => $requestid,
+                ],
+                IGNORE_MULTIPLE
+            );
+            if ($existing) {
+                $meta = $DB->get_record('local_btiportal_assessment_meta', ['cmid' => $existing->cmid]);
+                if (!$meta || $meta->assessmenttype !== self::TYPE_FINAL || (int)$meta->unitid !== 0) {
+                    throw new \moodle_exception('error', 'error', '', null, 'Assessment retry key conflicts with existing course activity');
+                }
+                return [
+                    'courseid' => $courseid,
+                    'unitid' => 0,
+                    'quizid' => (int)$existing->quizid,
+                    'cmid' => (int)$existing->cmid,
+                    'name' => (string)$existing->name,
+                    'intro' => (string)$existing->intro,
+                    'gradeitemid' => (int)($existing->gradeitemid ?? 0),
+                    'grademax' => (float)$existing->grademax,
+                    'passmark' => (float)$meta->passmark,
+                    'mapped' => false,
+                    'assessmenttype' => self::TYPE_FINAL,
+                    'questioncount' => (int)$DB->count_records('quiz_slots', ['quizid' => $existing->quizid]),
+                    'timeopen' => (int)$existing->timeopen,
+                    'timeclose' => (int)$existing->timeclose,
+                    'timelimit' => (int)$existing->timelimit,
+                    'maxattempts' => (int)$existing->attempts,
+                    'requirefullscreen' => (int)$meta->requirefullscreen,
+                    'maxwarnings' => (int)$meta->maxwarnings,
+                    'warningaction' => (string)$meta->warningaction,
+                ];
+            }
+        }
+
         // Moodle quiz: 0 attempts = unlimited.
         $attempts = max(0, $maxattempts);
         $reviewafter = display_options::AFTER_CLOSE | display_options::LATER_WHILE_OPEN;
+        $transaction = $DB->start_delegated_transaction();
 
         $fromform = (object)[
             'name' => $name,
@@ -195,7 +382,7 @@ class assessment_helper {
             'grade' => $grademax,
             'visible' => 1,
             'visibleoncoursepage' => 1,
-            'cmidnumber' => '',
+            'cmidnumber' => $requestid,
             'groupmode' => 0,
             'groupingid' => 0,
             'completion' => COMPLETION_TRACKING_NONE,
@@ -210,15 +397,21 @@ class assessment_helper {
             'boundary_repeats' => 0,
         ];
 
-        $cm = add_moduleinfo($fromform, $course);
+        try {
+            $cm = add_moduleinfo($fromform, $course);
+        } catch (\invalid_parameter_exception $exception) {
+            throw $exception;
+        } catch (\moodle_exception $exception) {
+            throw new \moodle_exception('quizcreationfailed', 'local_btiportal', '', null, $exception->getMessage());
+        }
         $cmid = (int)($cm->coursemodule ?? 0);
         $quizid = (int)($cm->instance ?? 0);
         if ($cmid <= 0 || $quizid <= 0) {
-            throw new \moodle_exception('error', 'error', '', null, 'Failed to create Moodle quiz');
+            throw new \moodle_exception('quizcreationfailed', 'local_btiportal');
         }
 
         $cmrec = $DB->get_record('course_modules', ['id' => $cmid], '*', MUST_EXIST);
-        if ((int)$cmrec->section !== (int)$section->id) {
+        if ($section && (int)$cmrec->section !== (int)$section->id) {
             $DB->set_field('course_modules', 'section', $section->id, ['id' => $cmid]);
             rebuild_course_cache($courseid, true);
         }
@@ -230,7 +423,7 @@ class assessment_helper {
         $modcontext = \context_module::instance($cmid);
         $category = question_get_default_category($modcontext->id, true);
         if (!$category) {
-            throw new \moodle_exception('error', 'error', '', null, 'Could not create a question category for this quiz');
+            throw new \moodle_exception('quizcreationfailed', 'local_btiportal');
         }
 
         $created = [];
@@ -264,9 +457,12 @@ class assessment_helper {
             'iteminstance' => $quizid,
             'itemnumber' => 0,
         ]);
+        if (!$gi) {
+            throw new \moodle_exception('quizcreationfailed', 'local_btiportal');
+        }
         $gradeitemid = $gi ? (int)$gi->id : 0;
         $mapped = false;
-        if ($gradeitemid > 0) {
+        if ($gradeitemid > 0 && !$isfinal) {
             gradebook_helper::map_grade_item($courseid, $unitid, $gradeitemid);
             $mapped = true;
         }
@@ -289,6 +485,7 @@ class assessment_helper {
             $warningaction
         );
 
+        $transaction->allow_commit();
         return [
             'courseid' => $courseid,
             'unitid' => $unitid,
@@ -374,7 +571,7 @@ class assessment_helper {
         $question = (object)['qtype' => $qtypecode];
         $saved = $qtype->save_question($question, $fromform);
         if (empty($saved->id)) {
-            throw new \moodle_exception('error', 'error', '', null, "Failed to save question {$fallbackindex}");
+            throw new \moodle_exception('quizcreationfailed', 'local_btiportal');
         }
         return (int)$saved->id;
     }
@@ -669,10 +866,14 @@ class assessment_helper {
             }
         }
 
+        $assessmenttype = self::normalize_type((string)$assessmenttype);
+
         return [
             'cmid' => (int)$cm->id,
             'courseid' => (int)$cm->course,
-            'unitid' => (int)$cm->section,
+            'unitid' => $module === self::MODULE_QUIZ && $assessmenttype === self::TYPE_FINAL
+                ? 0
+                : (int)$cm->section,
             'module' => $module,
             'instanceid' => $instanceid,
             'name' => (string)$cm->name,
@@ -724,7 +925,7 @@ class assessment_helper {
     ): array {
         global $DB;
         $cm = get_coursemodule_from_id('quiz', $cmid, 0, false, MUST_EXIST);
-        self::require_can_manage($userid, (int)$cm->course, (int)$cm->section);
+        self::require_can_manage($userid, (int)$cm->course, (int)$cm->section, (int)$cm->id);
         $quiz = $DB->get_record('quiz', ['id' => $cm->instance], '*', MUST_EXIST);
 
         $map = [
@@ -791,7 +992,7 @@ class assessment_helper {
 
     public static function set_visibility(int $cmid, int $userid, int $visible): array {
         $cm = get_coursemodule_from_id(null, $cmid, 0, false, MUST_EXIST);
-        self::require_can_manage($userid, (int)$cm->course, (int)$cm->section);
+        self::require_can_manage($userid, (int)$cm->course, (int)$cm->section, (int)$cm->id);
         set_coursemodule_visible($cmid, $visible ? 1 : 0);
         rebuild_course_cache((int)$cm->course, true);
         return self::get_one($cmid, $userid);
@@ -800,7 +1001,7 @@ class assessment_helper {
     public static function delete_assessment(int $cmid, int $userid): array {
         global $DB;
         $cm = get_coursemodule_from_id(null, $cmid, 0, false, MUST_EXIST);
-        self::require_can_manage($userid, (int)$cm->course, (int)$cm->section);
+        self::require_can_manage($userid, (int)$cm->course, (int)$cm->section, (int)$cm->id);
         $courseid = (int)$cm->course;
         $instanceid = (int)$cm->instance;
         $module = $cm->modname;
@@ -820,7 +1021,7 @@ class assessment_helper {
     public static function duplicate_assessment(int $cmid, int $userid): array {
         global $DB;
         $cm = get_coursemodule_from_id(null, $cmid, 0, false, MUST_EXIST);
-        self::require_can_manage($userid, (int)$cm->course, (int)$cm->section);
+        self::require_can_manage($userid, (int)$cm->course, (int)$cm->section, (int)$cm->id);
         $course = get_course((int)$cm->course);
         $newcm = duplicate_module($course, $cm);
         $newcmid = (int)($newcm->id ?? 0);
@@ -847,7 +1048,7 @@ class assessment_helper {
     public static function get_quiz_questions_for_teacher(int $cmid, int $userid): array {
         global $DB;
         $cm = get_coursemodule_from_id('quiz', $cmid, 0, false, MUST_EXIST);
-        self::require_can_manage($userid, (int)$cm->course, (int)$cm->section);
+        self::require_can_manage($userid, (int)$cm->course, (int)$cm->section, (int)$cm->id);
 
         $slots = $DB->get_records('quiz_slots', ['quizid' => $cm->instance], 'slot ASC');
         $out = [];
@@ -993,7 +1194,7 @@ class assessment_helper {
     public static function get_results(int $cmid, int $userid): array {
         global $DB;
         $cm = get_coursemodule_from_id('quiz', $cmid, 0, false, MUST_EXIST);
-        self::require_can_manage($userid, (int)$cm->course, (int)$cm->section);
+        self::require_can_manage($userid, (int)$cm->course, (int)$cm->section, (int)$cm->id);
 
         $quiz = $DB->get_record('quiz', ['id' => $cm->instance], '*', MUST_EXIST);
         $context = \context_course::instance((int)$cm->course);
@@ -1081,12 +1282,25 @@ class assessment_helper {
         ];
     }
 
-    public static function require_can_manage(int $userid, int $courseid, int $sectionid): void {
+    public static function require_can_manage(
+        int $userid,
+        int $courseid,
+        int $sectionid,
+        ?int $cmid = null
+    ): void {
+        global $DB;
+
         $context = \context_course::instance($courseid);
         if (is_siteadmin($userid)) {
             return;
         }
-        if (gradebook_helper::user_is_unit_teacher($userid, $courseid, $sectionid)) {
+        $meta = $cmid ? $DB->get_record('local_btiportal_assessment_meta', ['cmid' => $cmid]) : false;
+        $isfinal = $meta
+            && self::normalize_type((string)$meta->assessmenttype) === self::TYPE_FINAL;
+        $isassignedteacher = $isfinal
+            ? lecturer_teaching_helper::user_teaches_moodle_course($userid, $courseid)
+            : gradebook_helper::user_is_unit_teacher($userid, $courseid, $sectionid);
+        if ($isassignedteacher) {
             if (has_capability('moodle/course:manageactivities', $context)
                 || has_capability('mod/quiz:manage', $context)
                 || has_capability('mod/quiz:addinstance', $context)
