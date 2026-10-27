@@ -58,6 +58,12 @@ class get_assessments extends external_api {
             'maxwarnings' => new external_value(PARAM_INT, 'Max warnings'),
             'warningaction' => new external_value(PARAM_ALPHANUMEXT, 'Warning action'),
             'section' => new external_value(PARAM_INT, 'Section number'),
+            'programmeFinalAuthorized' => new external_value(
+                PARAM_INT,
+                'Authorized programme-level Final Exam',
+                VALUE_DEFAULT,
+                0
+            ),
         ]);
     }
 

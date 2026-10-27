@@ -9,6 +9,7 @@ use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
 use local_btiportal\gradebook_helper;
+use local_btiportal\lecturer_teaching_helper;
 
 /**
  * Return the unit-scoped gradebook (roster + mapped grade items + current grades).
@@ -34,8 +35,20 @@ class get_unit_gradebook extends external_api {
         $context = \context_course::instance($courseid);
         self::validate_context($context);
 
-        // Layer 1: unit teacher assignment (same table as get_my_teaching_sections).
-        gradebook_helper::require_unit_teacher((int)$USER->id, $courseid, $unitid);
+        // Final Exams are course-level (unitid = 0); ordinary gradebooks
+        // retain the existing unit-teacher authorization path.
+        if ($unitid === 0) {
+            lecturer_teaching_helper::require_moodle_course_teacher(
+                (int)$USER->id,
+                $courseid
+            );
+        } else {
+            gradebook_helper::require_unit_teacher(
+                (int)$USER->id,
+                $courseid,
+                $unitid
+            );
+        }
 
         // Layer 2: Moodle grading capability.
         if (!has_capability('moodle/grade:viewall', $context)
@@ -43,6 +56,10 @@ class get_unit_gradebook extends external_api {
             && !has_capability('mod/assign:grade', $context)
         ) {
             throw new \moodle_exception('nopermissions', 'error', '', 'view grades');
+        }
+
+        if ($unitid === 0) {
+            return gradebook_helper::get_final_exam_gradebook($courseid);
         }
 
         return gradebook_helper::get_unit_gradebook($courseid, $unitid);

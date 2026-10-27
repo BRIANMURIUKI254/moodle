@@ -271,6 +271,149 @@ class gradebook_helper {
     }
 
     /**
+     * Return the course-level Final Exam gradebook.
+     *
+     * Final Exams are native Moodle quizzes with unitid = 0 and are
+     * intentionally not mapped to a Course Unit gradebook.
+     *
+     * @return array<string,mixed>
+     */
+    public static function get_final_exam_gradebook(int $courseid): array {
+        global $DB;
+
+        $course = get_course($courseid);
+        $context = \context_course::instance($courseid);
+
+        // Include all enrolled users, including learners who have not
+        // attempted the Final Exam or received a grade yet.
+        $users = get_enrolled_users(
+            $context,
+            '',
+            0,
+            'u.*',
+            'lastname, firstname'
+        );
+
+        $students = [];
+        foreach ($users as $u) {
+            if (is_siteadmin($u)
+                || has_capability('moodle/course:manageactivities', $context, $u)) {
+                continue;
+            }
+
+            $students[] = [
+                'id' => (int)$u->id,
+                'fullname' => fullname($u),
+                'email' => (string)$u->email,
+                'firstname' => (string)$u->firstname,
+                'lastname' => (string)$u->lastname,
+            ];
+        }
+
+        // Match the quiz grade item to the plugin's explicit Final Exam
+        // metadata. Do not include unrelated course-level quizzes.
+        $items = $DB->get_records_sql(
+            "SELECT gi.id AS gradeitemid,
+                    gi.courseid,
+                    gi.itemname,
+                    gi.itemmodule,
+                    gi.itemtype,
+                    gi.iteminstance,
+                    gi.grademax,
+                    am.cmid
+               FROM {local_btiportal_assessment_meta} am
+               JOIN {course_modules} cm
+                 ON cm.id = am.cmid
+                AND cm.course = am.courseid
+               JOIN {modules} m
+                 ON m.id = cm.module
+                AND m.name = 'quiz'
+               JOIN {quiz} q
+                 ON q.id = am.instanceid
+                AND q.id = cm.instance
+               JOIN {grade_items} gi
+                 ON gi.courseid = am.courseid
+                AND gi.itemtype = 'mod'
+                AND gi.itemmodule = 'quiz'
+                AND gi.iteminstance = q.id
+                AND gi.itemnumber = 0
+              WHERE am.courseid = :courseid
+                AND am.unitid = 0
+                AND am.module = 'quiz'
+                AND am.assessmenttype = 'final'
+              ORDER BY gi.sortorder ASC, gi.id ASC",
+            ['courseid' => $courseid]
+        );
+
+        $gradeitems = [];
+        $grades = [];
+
+        foreach ($items as $gi) {
+            $gradeitemid = (int)$gi->gradeitemid;
+            $iteminstance = (int)$gi->iteminstance;
+            $itemname = trim((string)($gi->itemname ?? ''));
+
+            $gradeitems[] = [
+                'id' => $gradeitemid,
+                'name' => $itemname !== '' ? $itemname : 'Final Exam',
+                'itemmodule' => 'quiz',
+                'itemtype' => (string)$gi->itemtype,
+                'iteminstance' => $iteminstance,
+                'grademax' => (float)$gi->grademax,
+                'readonly' => true,
+                'readonlyreason' =>
+                    'Final Exam grades are managed in Moodle and cannot be edited in the portal.',
+                'category' => '',
+            ];
+
+            $graderecords = $DB->get_records(
+                'grade_grades',
+                ['itemid' => $gradeitemid]
+            );
+
+            foreach ($graderecords as $gg) {
+                if ($gg->finalgrade === null && $gg->rawgrade === null) {
+                    continue;
+                }
+
+                $grades[] = [
+                    'studentid' => (int)$gg->userid,
+                    'gradeitemid' => $gradeitemid,
+                    'grade' => $gg->finalgrade !== null
+                        ? (float)$gg->finalgrade
+                        : (float)$gg->rawgrade,
+                ];
+            }
+        }
+
+        $groups = self::build_gradebook_groups($gradeitems);
+
+        // Quiz grades intentionally remain excluded from unit assessment
+        // category averages and combined averages.
+        $categoryaverages = self::compute_category_averages(
+            $students,
+            $gradeitems,
+            $grades
+        );
+        $combinedaverages = self::compute_combined_averages(
+            $students,
+            $categoryaverages
+        );
+
+        return [
+            'courseid' => $courseid,
+            'unitid' => 0,
+            'coursename' => format_string($course->fullname),
+            'students' => $students,
+            'gradeitems' => $gradeitems,
+            'grades' => $grades,
+            'groups' => $groups,
+            'categoryaverages' => $categoryaverages,
+            'combinedaverages' => $combinedaverages,
+        ];
+    }
+
+    /**
      * Bucket key for a mapped grade item.
      * Quizzes always go to QUIZ (ignore meta). Assessed categories from assignment_meta.
      * Everything else → UNCATEGORIZED.

@@ -31,12 +31,12 @@ class staff_messaging_helper {
         }
 
         list($insql, $params) = $DB->get_in_or_equal(array_values($allowed), SQL_PARAMS_NAMED, 'u');
-        $where = "u.deleted = 0 AND u.suspended = 0 AND u.id {$insql}";
+        $where = "deleted = 0 AND suspended = 0 AND id {$insql}";
         if ($query !== '') {
-            $where .= " AND (" . $DB->sql_like('u.firstname', ':q1', false, false)
-                . " OR " . $DB->sql_like('u.lastname', ':q2', false, false)
-                . " OR " . $DB->sql_like('u.email', ':q3', false, false)
-                . " OR " . $DB->sql_like('u.username', ':q4', false, false) . ")";
+            $where .= " AND (" . $DB->sql_like('firstname', ':q1', false, false)
+                . " OR " . $DB->sql_like('lastname', ':q2', false, false)
+                . " OR " . $DB->sql_like('email', ':q3', false, false)
+                . " OR " . $DB->sql_like('username', ':q4', false, false) . ")";
             $like = '%' . $DB->sql_like_escape($query) . '%';
             $params['q1'] = $like;
             $params['q2'] = $like;

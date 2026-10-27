@@ -149,7 +149,12 @@ class exam_monitor_helper {
     public static function list_events(int $cmid, int $userid, int $attemptid = 0): array {
         global $DB;
         $cm = get_coursemodule_from_id('quiz', $cmid, 0, false, MUST_EXIST);
-        assessment_helper::require_can_manage($userid, (int)$cm->course, (int)$cm->section);
+        assessment_helper::require_can_manage(
+            $userid,
+            (int)$cm->course,
+            (int)$cm->section,
+            (int)$cm->id
+        );
 
         $params = ['quizid' => (int)$cm->instance];
         $where = 'quizid = :quizid';

@@ -329,56 +329,171 @@ class lecturer_teaching_helper {
     public static function list_moodle_teaching_courses(int $userid): array {
         global $DB;
 
-        $roles = $DB->get_records_list('role', 'shortname', academic_constants::MOODLE_TEACHING_ROLES);
-        if (!$roles) {
+        if ($userid <= 0) {
             return [];
         }
-        $roleids = array_map(static fn($r) => (int)$r->id, $roles);
-        list($insql, $params) = $DB->get_in_or_equal($roleids, SQL_PARAMS_NAMED, 'role');
-        $params['userid'] = $userid;
-        $params['siteid'] = SITEID;
-        $params['coursecxt'] = CONTEXT_COURSE;
 
-        $sql = "SELECT ue.id AS enrolmentid, ue.status, ue.timestart, ue.timeend,
-                       e.courseid, c.fullname, c.shortname, c.visible, r.shortname AS roleshortname
-                  FROM {user_enrolments} ue
-                  JOIN {enrol} e ON e.id = ue.enrolid
-                  JOIN {course} c ON c.id = e.courseid
-                  JOIN {context} ctx ON ctx.contextlevel = :coursecxt AND ctx.instanceid = c.id
-                  JOIN {role_assignments} ra ON ra.userid = ue.userid AND ra.contextid = ctx.id
-                  JOIN {role} r ON r.id = ra.roleid
-                 WHERE ue.userid = :userid
-                   AND c.id <> :siteid
-                   AND r.id {$insql}
-              ORDER BY c.fullname ASC";
-
-        $rows = $DB->get_records_sql($sql, $params, 0, academic_constants::LIST_LIMIT);
+        $courses = enrol_get_all_users_courses($userid, false);
         $out = [];
-        $indexbycourse = [];
-        foreach ($rows as $row) {
-            $cid = (int)$row->courseid;
-            $roleshortname = (string)$row->roleshortname;
-            if (isset($indexbycourse[$cid])) {
-                if ($roleshortname === 'editingteacher') {
-                    $out[$indexbycourse[$cid]]['role'] = 'editingteacher';
-                }
+        foreach ($courses as $course) {
+            $cid = (int)$course->id;
+            if ($cid <= SITEID) {
                 continue;
             }
-            $indexbycourse[$cid] = count($out);
+
+            $context = \context_course::instance($cid, IGNORE_MISSING);
+            if (!$context) {
+                continue;
+            }
+            $roles = get_user_roles($context, $userid, false);
+            $teachingroles = array_values(array_filter(
+                array_map(static fn($role) => (string)$role->shortname, $roles),
+                static fn($shortname) => in_array($shortname, academic_constants::MOODLE_TEACHING_ROLES, true)
+            ));
+            if (!$teachingroles) {
+                continue;
+            }
+
+            $roleshortname = in_array('editingteacher', $teachingroles, true)
+                ? 'editingteacher'
+                : $teachingroles[0];
+            $active = enrol_get_enrolment_end($cid, $userid) !== false;
+            $enrolment = $DB->get_record_sql(
+                "SELECT ue.id, ue.status, ue.timestart, ue.timeend
+                   FROM {user_enrolments} ue
+                   JOIN {enrol} e ON e.id = ue.enrolid
+                  WHERE ue.userid = :userid AND e.courseid = :courseid
+               ORDER BY ue.status ASC, e.status ASC, ue.id ASC",
+                ['userid' => $userid, 'courseid' => $cid],
+                IGNORE_MULTIPLE
+            );
+
             $out[] = [
-                'enrolmentid' => (int)$row->enrolmentid,
+                'enrolmentid' => (int)($enrolment->id ?? 0),
                 'courseid' => $cid,
-                'fullname' => (string)$row->fullname,
-                'shortname' => (string)$row->shortname,
-                'visible' => (int)$row->visible,
+                'fullname' => (string)$course->fullname,
+                'shortname' => (string)$course->shortname,
+                'visible' => (int)$course->visible,
                 'role' => $roleshortname,
-                'status' => (int)$row->status,
-                'statuslabel' => ((int)$row->status === 0) ? 'active' : 'inactive',
-                'timestart' => (int)$row->timestart,
-                'timeend' => (int)$row->timeend,
+                'status' => $active ? ENROL_USER_ACTIVE : ENROL_USER_SUSPENDED,
+                'statuslabel' => $active ? 'active' : 'inactive',
+                'timestart' => (int)($enrolment->timestart ?? 0),
+                'timeend' => (int)($enrolment->timeend ?? 0),
             ];
         }
-        return $out;
+
+        usort($out, static fn($a, $b) => strcasecmp($a['fullname'], $b['fullname']));
+        return array_slice($out, 0, academic_constants::LIST_LIMIT);
+    }
+
+    /**
+     * True when the user has an active Moodle teaching enrolment on the course.
+     */
+    public static function user_teaches_moodle_course(int $userid, int $courseid): bool {
+        global $DB;
+        if ($userid <= 0 || $courseid <= SITEID || !$DB->record_exists('course', ['id' => $courseid])) {
+            error_log(sprintf(
+                '[local_btiportal] Course teaching authorization denied: user=%d course=%d reason=%s',
+                $userid,
+                $courseid,
+                $userid <= 0 ? 'invalid_userid' : ($courseid <= SITEID ? 'invalid_courseid' : 'course_not_found')
+            ));
+            return false;
+        }
+
+        $context = \context_course::instance($courseid, IGNORE_MISSING);
+        $roles = $context ? get_user_roles($context, $userid, false) : [];
+        $allroles = array_values(array_unique(array_map(
+            static fn($role) => (string)$role->shortname,
+            $roles
+        )));
+        $teachingroles = array_values(array_unique(array_filter(
+            $allroles,
+            static fn($shortname) => in_array($shortname, academic_constants::MOODLE_TEACHING_ROLES, true)
+        )));
+        $activeenrolmentend = enrol_get_enrolment_end($courseid, $userid);
+        if ($teachingroles && $activeenrolmentend !== false) {
+            error_log(sprintf(
+                '[local_btiportal] Course teaching authorization: outcome=authorized user=%d course=%d active_enrolment=1 course_roles=%s teaching_roles=%s active_until=%d',
+                $userid,
+                $courseid,
+                $allroles ? implode(',', $allroles) : 'none',
+                implode(',', $teachingroles),
+                (int)$activeenrolmentend
+            ));
+            return true;
+        }
+
+        $rows = $DB->get_records_sql(
+            "SELECT e.id AS enrolid, e.status AS enrolstatus,
+                    ue.id AS enrolmentid, ue.status AS userenrolstatus, ue.timestart, ue.timeend
+               FROM {enrol} e
+          LEFT JOIN {user_enrolments} ue ON ue.enrolid = e.id AND ue.userid = :userid
+              WHERE e.courseid = :courseid
+           ORDER BY e.id ASC",
+            ['userid' => $userid, 'courseid' => $courseid]
+        );
+        $now = time();
+        $diagnostics = [];
+        $hasteachingrole = (bool)$teachingroles;
+        foreach ($rows as $row) {
+            $userenrolstatus = isset($row->userenrolstatus) ? (int)$row->userenrolstatus : null;
+            $timestart = isset($row->timestart) ? (int)$row->timestart : null;
+            $timeend = isset($row->timeend) ? (int)$row->timeend : null;
+            $reason = 'authorized';
+            if ((int)$row->enrolstatus !== ENROL_INSTANCE_ENABLED) {
+                $reason = 'enrol_instance_disabled';
+            } else if ($userenrolstatus === null) {
+                $reason = 'no_user_enrolment';
+            } else if ($userenrolstatus !== ENROL_USER_ACTIVE) {
+                $reason = 'user_enrolment_inactive';
+            } else if ($timestart !== null && $timestart > 0 && $timestart > $now) {
+                $reason = 'user_enrolment_not_started';
+            } else if ($timeend !== null && $timeend > 0 && $timeend <= $now) {
+                $reason = 'user_enrolment_expired';
+            } else if (!$hasteachingrole) {
+                $reason = 'no_authorized_course_role';
+            } else if ($activeenrolmentend === false) {
+                $reason = 'inactive_by_moodle_enrolment_api';
+            }
+            $diagnostics[] = sprintf(
+                'enrolid=%d,enrolstatus=%d,userenrolmentid=%d,userenrolstatus=%s,timestart=%s,timeend=%s,roles=%s,reason=%s',
+                (int)$row->enrolid,
+                (int)$row->enrolstatus,
+                (int)($row->enrolmentid ?? 0),
+                $userenrolstatus === null ? 'none' : (string)$userenrolstatus,
+                $timestart === null ? 'none' : (string)$timestart,
+                $timeend === null ? 'none' : (string)$timeend,
+                $teachingroles ? implode(',', $teachingroles) : 'none',
+                $reason
+            );
+        }
+
+        $failure = !$rows ? 'no_enrolment_instance' : ($hasteachingrole
+            ? 'no_active_user_enrolment'
+            : 'no_authorized_course_role');
+        error_log(sprintf(
+            '[local_btiportal] Course teaching authorization denied: outcome=denied user=%d course=%d reason=%s active_enrolment=%d course_roles=%s teaching_roles=%s details=%s',
+            $userid,
+            $courseid,
+            $failure,
+            $activeenrolmentend === false ? 0 : 1,
+            $allroles ? implode(',', $allroles) : 'none',
+            $teachingroles ? implode(',', $teachingroles) : 'none',
+            $diagnostics ? implode(';', $diagnostics) : 'no_rows'
+        ));
+        return false;
+    }
+
+    /**
+     * Require an active Moodle teaching enrolment for the authenticated user.
+     *
+     * @throws \moodle_exception
+     */
+    public static function require_moodle_course_teacher(int $userid, int $courseid): void {
+        if (!self::user_teaches_moodle_course($userid, $courseid)) {
+            throw new \moodle_exception('notcourseteacher', 'local_btiportal');
+        }
     }
 
     /**
