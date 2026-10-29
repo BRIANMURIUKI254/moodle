@@ -45,6 +45,7 @@ class get_assessments extends external_api {
             'name' => new external_value(PARAM_TEXT, 'Title'),
             'intro' => new external_value(PARAM_RAW, 'Intro HTML'),
             'assessmenttype' => new external_value(PARAM_ALPHANUMEXT, 'Type'),
+            'programmeFinalAuthorized' => new external_value(PARAM_INT, 'Authorized programme-level Final Exam'),
             'visible' => new external_value(PARAM_INT, 'Visible'),
             'uservisible' => new external_value(PARAM_INT, 'Visible to this user'),
             'grademax' => new external_value(PARAM_FLOAT, 'Total marks'),

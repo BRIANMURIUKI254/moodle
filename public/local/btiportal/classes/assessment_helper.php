@@ -314,8 +314,26 @@ class assessment_helper {
             );
             if ($existing) {
                 $meta = $DB->get_record('local_btiportal_assessment_meta', ['cmid' => $existing->cmid]);
-                if (!$meta || $meta->assessmenttype !== self::TYPE_FINAL || (int)$meta->unitid !== 0) {
-                    throw new \moodle_exception('error', 'error', '', null, 'Assessment retry key conflicts with existing course activity');
+                if (!$meta
+                    || strtolower(trim((string)$meta->assessmenttype)) !== self::TYPE_FINAL
+                    || (int)$meta->unitid !== 0
+                    || (int)$meta->courseid !== $courseid
+                    || strtolower(trim((string)$meta->module)) !== self::MODULE_QUIZ
+                    || (int)$meta->instanceid !== (int)$existing->quizid
+                ) {
+                    self::save_meta(
+                        (int)$existing->cmid,
+                        $courseid,
+                        0,
+                        self::MODULE_QUIZ,
+                        (int)$existing->quizid,
+                        self::TYPE_FINAL,
+                        $passmark,
+                        $requirefullscreen ? 1 : 0,
+                        $maxwarnings,
+                        $warningaction
+                    );
+                    $meta = $DB->get_record('local_btiportal_assessment_meta', ['cmid' => $existing->cmid]);
                 }
                 return [
                     'courseid' => $courseid,
@@ -734,6 +752,9 @@ class assessment_helper {
         global $DB;
         $assessmenttype = self::normalize_type($assessmenttype);
         $warningaction = self::normalize_action($warningaction);
+        if ($module === self::MODULE_QUIZ && $assessmenttype === self::TYPE_FINAL) {
+            $unitid = 0;
+        }
         $now = time();
         $existing = $DB->get_record('local_btiportal_assessment_meta', ['cmid' => $cmid]);
         $record = (object)[
@@ -756,6 +777,44 @@ class assessment_helper {
         }
         $record->timecreated = $now;
         $DB->insert_record('local_btiportal_assessment_meta', $record);
+    }
+
+    /**
+     * Repair metadata only for a Moodle quiz created by the BTI programme-Final workflow.
+     * The course-module idnumber is the verified creation marker; quiz names are not used.
+     */
+    public static function repair_final_exam_metadata(int $cmid): bool {
+        global $DB;
+
+        $cm = get_coursemodule_from_id('quiz', $cmid, 0, false, IGNORE_MISSING);
+        if (!$cm
+            || (int)$cm->course <= SITEID
+            || (int)$cm->instance <= 0
+            || !$DB->record_exists('quiz', ['id' => (int)$cm->instance, 'course' => (int)$cm->course])
+            || !str_starts_with((string)$cm->idnumber, 'bti-final-')
+        ) {
+            return false;
+        }
+
+        $meta = $DB->get_record('local_btiportal_assessment_meta', ['cmid' => $cmid]);
+        $passmark = $meta ? (float)$meta->passmark : 0.0;
+        $requirefullscreen = $meta ? (int)$meta->requirefullscreen : 0;
+        $maxwarnings = $meta ? max(1, (int)$meta->maxwarnings) : 3;
+        $warningaction = $meta ? (string)$meta->warningaction : self::ACTION_SUBMIT_FLAG;
+
+        self::save_meta(
+            $cmid,
+            (int)$cm->course,
+            0,
+            self::MODULE_QUIZ,
+            (int)$cm->instance,
+            self::TYPE_FINAL,
+            $passmark,
+            $requirefullscreen,
+            $maxwarnings,
+            $warningaction
+        );
+        return true;
     }
 
     /**
@@ -798,12 +857,14 @@ class assessment_helper {
                     continue;
                 }
                 $row = $metabycmid[(int)$cm->id] ?? null;
-                $item = self::describe_cm($cm, $row);
+                $item = self::describe_cm($cm, $row, $userid);
                 if ($item) {
                     $out[] = $item;
                 }
             }
         }
+
+        self::append_authorized_programme_finals($out, $userid);
 
         usort($out, static function ($a, $b) {
             $ao = (int)($a['timeopen'] ?? 0);
@@ -816,11 +877,149 @@ class assessment_helper {
         return $out;
     }
 
+    protected static function programme_final_authorized(\cm_info $cm, ?object $meta, int $userid): int {
+        global $DB;
+
+        if ($userid <= 0
+            || $cm->modname !== self::MODULE_QUIZ
+            || !$cm->visible
+            || !$meta
+            || (int)$meta->unitid !== 0
+            || strtolower(trim((string)$meta->module)) !== 'quiz'
+            || strtolower(trim((string)$meta->assessmenttype)) !== 'final'
+            || (int)$meta->cmid !== (int)$cm->id
+            || (int)$meta->courseid !== (int)$cm->course
+            || (int)$meta->instanceid !== (int)$cm->instance
+        ) {
+            return 0;
+        }
+
+        $profile = $DB->get_record(
+            'local_btiportal_student_profile',
+            ['userid' => $userid],
+            'userid,status,admissionstatus,academicstatus,programmeid',
+            IGNORE_MISSING
+        );
+        if (!$profile
+            || strtolower(trim((string)$profile->status)) !== 'active'
+            || strtolower(trim((string)$profile->admissionstatus)) !== 'active'
+            || strtolower(trim((string)$profile->academicstatus)) !== 'active'
+            || (int)$profile->programmeid <= 0
+        ) {
+            return 0;
+        }
+
+        $programme = $DB->get_record(
+            'local_btiportal_programme',
+            ['id' => (int)$profile->programmeid],
+            'id,code',
+            IGNORE_MISSING
+        );
+        $course = $DB->get_record(
+            'course',
+            ['id' => (int)$cm->course],
+            'id,shortname,visible',
+            IGNORE_MISSING
+        );
+        if (!$programme
+            || !$course
+            || (int)$course->visible !== 1
+            || trim((string)$programme->code) === ''
+            || trim((string)$programme->code) !== trim((string)$course->shortname)
+        ) {
+            return 0;
+        }
+
+        return 1;
+    }
+
+    /**
+     * Add visible, mapped programme Final Exams even when the student is not enrolled
+     * in the programme-container course.
+     *
+     * @param list<array<string,mixed>> $out
+     */
+    protected static function append_authorized_programme_finals(array &$out, int $userid): void {
+        global $DB;
+
+        $profile = $DB->get_record(
+            'local_btiportal_student_profile',
+            ['userid' => $userid],
+            'userid,status,admissionstatus,academicstatus,programmeid',
+            IGNORE_MISSING
+        );
+        if (!$profile
+            || strtolower(trim((string)$profile->status)) !== 'active'
+            || strtolower(trim((string)$profile->admissionstatus)) !== 'active'
+            || strtolower(trim((string)$profile->academicstatus)) !== 'active'
+            || (int)$profile->programmeid <= 0
+        ) {
+            return;
+        }
+
+        $programme = $DB->get_record(
+            'local_btiportal_programme',
+            ['id' => (int)$profile->programmeid],
+            'id,code',
+            IGNORE_MISSING
+        );
+        if (!$programme || trim((string)$programme->code) === '') {
+            return;
+        }
+
+        $course = $DB->get_record(
+            'course',
+            ['shortname' => trim((string)$programme->code)],
+            'id,shortname,visible',
+            IGNORE_MISSING
+        );
+        if (!$course || (int)$course->id <= 1 || (int)$course->visible !== 1) {
+            return;
+        }
+
+        $seen = [];
+        foreach ($out as $item) {
+            if (!empty($item['cmid'])) {
+                $seen[(int)$item['cmid']] = true;
+            }
+        }
+
+        $modinfo = get_fast_modinfo((int)$course->id, $userid);
+        foreach ($modinfo->get_cms() as $cm) {
+            if ((int)$cm->id <= 0 || $cm->modname !== self::MODULE_QUIZ || !$cm->visible) {
+                continue;
+            }
+            if (isset($seen[(int)$cm->id])) {
+                continue;
+            }
+            $meta = $DB->get_record(
+                'local_btiportal_assessment_meta',
+                [
+                    'cmid' => (int)$cm->id,
+                    'courseid' => (int)$course->id,
+                    'unitid' => 0,
+                    'module' => 'quiz',
+                    'instanceid' => (int)$cm->instance,
+                    'assessmenttype' => 'final',
+                ],
+                '*',
+                IGNORE_MISSING
+            );
+            if (!$meta) {
+                continue;
+            }
+            $item = self::describe_cm($cm, $meta, $userid);
+            if ($item) {
+                $out[] = $item;
+            }
+        }
+    }
+
     /**
      * @param \cm_info $cm
      * @return array<string,mixed>|null
      */
-    protected static function describe_cm(\cm_info $cm, ?object $meta): ?array {
+    protected static function describe_cm(\cm_info $cm, ?object $meta, int $userid = 0): ?array {
         global $DB;
         $module = $cm->modname;
         $instanceid = (int)$cm->instance;
@@ -867,6 +1066,7 @@ class assessment_helper {
         }
 
         $assessmenttype = self::normalize_type((string)$assessmenttype);
+        $programmefinalauthorized = self::programme_final_authorized($cm, $meta, $userid);
 
         return [
             'cmid' => (int)$cm->id,
@@ -879,6 +1079,7 @@ class assessment_helper {
             'name' => (string)$cm->name,
             'intro' => $intro,
             'assessmenttype' => $assessmenttype,
+            'programmeFinalAuthorized' => $programmefinalauthorized,
             'visible' => $cm->visible ? 1 : 0,
             'uservisible' => $cm->uservisible ? 1 : 0,
             'grademax' => $grademax,
@@ -911,7 +1112,7 @@ class assessment_helper {
         $modinfo = get_fast_modinfo((int)$cm->course, $userid);
         $cminfo = $modinfo->get_cm($cmid);
         $meta = $DB->get_record('local_btiportal_assessment_meta', ['cmid' => $cmid]);
-        $item = self::describe_cm($cminfo, $meta ?: null);
+        $item = self::describe_cm($cminfo, $meta ?: null, $userid);
         if (!$item) {
             throw new \moodle_exception('invalidrecord', 'error');
         }
@@ -966,9 +1167,21 @@ class assessment_helper {
         }
 
         $meta = $DB->get_record('local_btiportal_assessment_meta', ['cmid' => $cmid]);
+        if (!$meta && str_starts_with((string)$cm->idnumber, 'bti-final-')) {
+            self::repair_final_exam_metadata($cmid);
+            $meta = $DB->get_record('local_btiportal_assessment_meta', ['cmid' => $cmid]);
+        }
         if ($meta) {
             if (!empty($fields['assessmenttype'])) {
                 $meta->assessmenttype = self::normalize_type((string)$fields['assessmenttype']);
+                if ($meta->assessmenttype === self::TYPE_FINAL) {
+                    $meta->unitid = 0;
+                    $meta->module = self::MODULE_QUIZ;
+                    $meta->instanceid = (int)$quiz->id;
+                    $meta->courseid = (int)$cm->course;
+                } else if ((int)$meta->unitid <= 0) {
+                    throw new \invalid_parameter_exception('A course unit is required for this assessment type');
+                }
             }
             if (isset($fields['passmark'])) {
                 $meta->passmark = (float)$fields['passmark'];
@@ -984,6 +1197,24 @@ class assessment_helper {
             }
             $meta->timemodified = time();
             $DB->update_record('local_btiportal_assessment_meta', $meta);
+        } else if (!empty($fields['assessmenttype'])) {
+            $assessmenttype = self::normalize_type((string)$fields['assessmenttype']);
+            if ($assessmenttype === self::TYPE_FINAL) {
+                self::save_meta(
+                    $cmid,
+                    (int)$cm->course,
+                    0,
+                    self::MODULE_QUIZ,
+                    (int)$quiz->id,
+                    self::TYPE_FINAL,
+                    isset($fields['passmark']) ? (float)$fields['passmark'] : 0.0,
+                    isset($fields['requirefullscreen']) ? ((int)$fields['requirefullscreen'] ? 1 : 0) : 0,
+                    isset($fields['maxwarnings']) ? max(1, (int)$fields['maxwarnings']) : 3,
+                    !empty($fields['warningaction'])
+                        ? (string)$fields['warningaction']
+                        : self::ACTION_SUBMIT_FLAG
+                );
+            }
         }
 
         rebuild_course_cache((int)$cm->course, true);
@@ -1032,10 +1263,20 @@ class assessment_helper {
         if ($srcmeta) {
             unset($srcmeta->id);
             $srcmeta->cmid = $newcmid;
+            $srcmeta->courseid = (int)$newcm->course;
             $srcmeta->instanceid = (int)$newcm->instance;
+            $srcmeta->module = self::MODULE_QUIZ;
+            if (strtolower(trim((string)$srcmeta->assessmenttype)) === self::TYPE_FINAL) {
+                $srcmeta->assessmenttype = self::TYPE_FINAL;
+                $srcmeta->unitid = 0;
+            }
             $srcmeta->timecreated = time();
             $srcmeta->timemodified = time();
             $DB->insert_record('local_btiportal_assessment_meta', $srcmeta);
+        } else if ($cm->modname === self::MODULE_QUIZ
+            && str_starts_with((string)$cm->idnumber, 'bti-final-')
+        ) {
+            self::repair_final_exam_metadata($newcmid);
         }
         return self::get_one($newcmid, $userid);
     }
