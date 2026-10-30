@@ -1305,6 +1305,169 @@ class assessment_helper {
     }
 
     /**
+     * Start or resume a quiz attempt after validating the portal and Moodle access model.
+     *
+     * @param array<string,string> $preflightdata
+     * @return array<string,mixed>
+     */
+    public static function launch_quiz_attempt(
+        int $quizid,
+        int $courseid,
+        int $cmid,
+        array $preflightdata,
+        int $userid
+    ): array {
+        global $DB;
+        error_log(sprintf(
+            'btiportal launch start userid=%d courseid=%d quizid=%d cmid=%d',
+            $userid,
+            $courseid,
+            $quizid,
+            $cmid
+        ));
+
+        $quiz = $DB->get_record('quiz', ['id' => $quizid], '*', MUST_EXIST);
+        $course = get_course((int)$quiz->course);
+        $cm = get_coursemodule_from_instance('quiz', $quizid, 0, false, MUST_EXIST);
+
+        if ($courseid > 0 && (int)$courseid !== (int)$quiz->course) {
+            debugging('btiportal launch denied: course/quiz mismatch', DEBUG_DEVELOPER, [
+                'userid' => $userid, 'courseid' => $courseid, 'quizid' => $quizid, 'cmid' => $cmid
+            ]);
+            throw new \moodle_exception('quizdifferentcourse', 'local_btiportal', '', null,
+                'The quiz belongs to a different course.');
+        }
+        if ((int)$course->id !== (int)$cm->course || ($cmid > 0 && (int)$cmid !== (int)$cm->id)) {
+            debugging('btiportal launch denied: invalid course-module mapping', DEBUG_DEVELOPER, [
+                'userid' => $userid, 'courseid' => $courseid, 'quizid' => $quizid, 'cmid' => $cmid,
+                'resolvedcmid' => $cm->id
+            ]);
+            throw new \moodle_exception('quizinvalidcm', 'local_btiportal', '', null,
+                'The Moodle course module mapping for this quiz is invalid.');
+        }
+        if ((int)$course->visible !== 1) {
+            throw new \moodle_exception('courseunavailable', 'local_btiportal', '', null,
+                'This course is unavailable.');
+        }
+
+        $coursecontext = \context_course::instance((int)$course->id);
+        $modulecontext = \context_module::instance((int)$cm->id);
+
+        $activeenrolments = $DB->get_records_sql(
+            "SELECT ue.status, ue.timestart, ue.timeend
+               FROM {user_enrolments} ue
+               JOIN {enrol} e ON e.id = ue.enrolid
+              WHERE ue.userid = :userid AND e.courseid = :courseid",
+            ['userid' => $userid, 'courseid' => (int)$course->id]
+        );
+        $suspended = false;
+        $expired = false;
+        $active = false;
+        $now = time();
+        foreach ($activeenrolments as $enrolment) {
+            if ((int)$enrolment->status !== 0) {
+                $suspended = true;
+                continue;
+            }
+            if (!empty($enrolment->timestart) && (int)$enrolment->timestart > $now) {
+                continue;
+            }
+            if (!empty($enrolment->timeend) && (int)$enrolment->timeend < $now) {
+                $expired = true;
+                continue;
+            }
+            $active = true;
+        }
+        if (!$active && $suspended) {
+            throw new \moodle_exception('enrolmentsuspended', 'local_btiportal', '', null,
+                'Your Moodle enrolment in this course is suspended.');
+        }
+        if (!$active && $expired) {
+            throw new \moodle_exception('enrolmentexpired', 'local_btiportal', '', null,
+                'Your Moodle enrolment in this course has expired.');
+        }
+        if (!is_enrolled($coursecontext, $userid, '', true)) {
+            throw new \moodle_exception('studentnotenrolled', 'local_btiportal', '', null,
+                'You are not actively enrolled in this course.');
+        }
+
+        require_capability('mod/quiz:attempt', $modulecontext, $userid);
+        $quizobj = quiz_settings::create((int)$cm->instance, $userid);
+        if (!$quizobj->has_questions()) {
+            throw new \moodle_exception('quiznoquestions', 'local_btiportal', '', null,
+                'This quiz has no questions available.');
+        }
+
+        $accessmanager = $quizobj->get_access_manager(time());
+        $preventreasons = $accessmanager->prevent_access();
+        if (!empty($preventreasons)) {
+            throw new \moodle_exception(
+                'quizaccessdenied',
+                'local_btiportal',
+                $quizobj->view_url(),
+                implode(' ', array_map(static function ($reason) {
+                    return strip_tags((string)$reason);
+                }, $preventreasons))
+            );
+        }
+
+        list($currentattemptid, $attemptnumber, $lastattempt, $messages, $page) =
+            quiz_validate_new_attempt($quizobj, $accessmanager, false, -1, false);
+        if (!empty($messages)) {
+            throw new \moodle_exception(
+                'quizaccessdenied',
+                'local_btiportal',
+                $quizobj->view_url(),
+                implode(' ', array_map(static function ($message) {
+                    return strip_tags((string)$message);
+                }, $messages))
+            );
+        }
+
+        if ($currentattemptid && $lastattempt && $lastattempt->state !== quiz_attempt::NOT_STARTED) {
+            if ($lastattempt->state === quiz_attempt::OVERDUE) {
+                throw new \moodle_exception('stateoverdue', 'quiz', $quizobj->view_url());
+            }
+            if ($lastattempt->state === quiz_attempt::IN_PROGRESS) {
+                return [
+                    'attempt' => (array)$lastattempt,
+                    'warnings' => [],
+                ];
+            }
+        }
+
+        if ($accessmanager->is_preflight_check_required($currentattemptid)) {
+            $provideddata = [];
+            foreach ($preflightdata as $data) {
+                $provideddata[(string)$data['name']] = (string)$data['value'];
+            }
+            $errors = $accessmanager->validate_preflight_check($provideddata, [], $currentattemptid);
+            if (!empty($errors)) {
+                throw new \moodle_exception(
+                    'quizaccessdenied',
+                    'local_btiportal',
+                    $quizobj->view_url(),
+                    implode(' ', array_map(static function ($error) {
+                        return strip_tags((string)$error);
+                    }, $errors))
+                );
+            }
+            $accessmanager->notify_preflight_check_passed($currentattemptid);
+        }
+
+        $attempt = quiz_prepare_and_start_new_attempt(
+            $quizobj,
+            $attemptnumber,
+            $lastattempt,
+            true
+        );
+        return [
+            'attempt' => (array)$attempt,
+            'warnings' => [],
+        ];
+    }
+
+    /**
      * Structured questions for the current user's attempt. Never includes correct answers.
      *
      * @return array<string,mixed>
