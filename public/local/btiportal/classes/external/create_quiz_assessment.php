@@ -95,15 +95,42 @@ class create_quiz_assessment extends external_api {
 
         $context = \context_course::instance($courseid);
         $assessmenttype = assessment_helper::normalize_type((string)$params['assessmenttype']);
+        if ($assessmenttype === assessment_helper::TYPE_FINAL) {
+            $listedcourse = null;
+            foreach (lecturer_teaching_helper::list_moodle_teaching_courses((int)$USER->id) as $listed) {
+                if ((int)$listed['courseid'] === $courseid) {
+                    $listedcourse = $listed;
+                    break;
+                }
+            }
+            error_log(sprintf(
+                '[local_btiportal] Final Exam authorization probe: endpoint=course_teacher_v2 user=%d submittedcourseid=%d unitid=%d courseexists=1 actualcourseid=%d selector_match=%d selector_status=%s helper=%s manageactivities=%d questionadd=%d',
+                (int)$USER->id,
+                $courseid,
+                (int)$params['unitid'],
+                (int)$course->id,
+                $listedcourse ? 1 : 0,
+                $listedcourse ? (string)$listedcourse['statuslabel'] : 'not_listed',
+                'lecturer_teaching_helper::require_moodle_course_teacher',
+                has_capability('moodle/course:manageactivities', $context) ? 1 : 0,
+                has_capability('moodle/question:add', $context) ? 1 : 0
+            ));
+        }
         self::validate_context($context);
         if ($assessmenttype === assessment_helper::TYPE_FINAL) {
             if ((int)$params['unitid'] !== 0) {
                 throw new \invalid_parameter_exception('Final exams must not be associated with a course unit');
             }
-            lecturer_teaching_helper::require_programme_course_assignment(
-                (int)$USER->id,
-                $courseid
-            );
+            try {
+                lecturer_teaching_helper::require_moodle_course_teacher((int)$USER->id, $courseid);
+            } catch (\moodle_exception $exception) {
+                error_log(sprintf(
+                    '[local_btiportal] Final Exam denied: teacher is not assigned to Moodle course; user=%d course=%d',
+                    (int)$USER->id,
+                    $courseid
+                ));
+                throw $exception;
+            }
             error_log(sprintf(
                 '[local_btiportal] Final Exam authorization probe: outcome=authorized user=%d course=%d unit=%d helper=%s',
                 (int)$USER->id,

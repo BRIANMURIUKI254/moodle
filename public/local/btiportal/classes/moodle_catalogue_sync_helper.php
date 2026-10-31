@@ -36,7 +36,7 @@ class moodle_catalogue_sync_helper {
             'name' => $name,
             'idnumber' => $code,
             'parent' => $parentid,
-            'description' => 'Synced from B TI LMS programme ' . $code,
+            'description' => 'Synced from bti LMS programme ' . $code,
             'descriptionformat' => FORMAT_HTML,
             'visible' => 1,
         ]);
@@ -73,7 +73,7 @@ class moodle_catalogue_sync_helper {
             'name' => 'BTI Programmes',
             'idnumber' => $idnumber,
             'parent' => 0,
-            'description' => 'Academic programmes synced from B TI LMS',
+            'description' => 'Academic programmes synced from bti LMS',
             'descriptionformat' => FORMAT_HTML,
             'visible' => 1,
         ]);

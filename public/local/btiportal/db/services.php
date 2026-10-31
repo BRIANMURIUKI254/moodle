@@ -1518,6 +1518,13 @@ $functions = [
         'type'        => 'read',
         'ajax'        => true,
     ],
+    'local_btiportal_launch_quiz_attempt' => [
+        'classname'   => 'local_btiportal\\external\\launch_quiz_attempt',
+        'methodname'  => 'execute',
+        'description' => 'Securely start or resume a student quiz attempt with Moodle native access rules.',
+        'type'        => 'write',
+        'ajax'        => true,
+    ],
     'local_btiportal_log_exam_event' => [
         'classname'   => 'local_btiportal\\external\\log_exam_event',
         'methodname'  => 'execute',
@@ -1750,6 +1757,7 @@ $services_disabled = [
             'local_btiportal_get_assessment_results',
             'local_btiportal_get_quiz_questions',
             'local_btiportal_get_attempt_questions',
+            'local_btiportal_launch_quiz_attempt',
             'local_btiportal_log_exam_event',
             'local_btiportal_get_exam_events',
             'local_btiportal_apply_exam_warning',

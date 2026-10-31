@@ -17,7 +17,7 @@ class send_admission_welcome_email extends external_api {
         return new external_function_parameters([
             'userid' => new external_value(PARAM_INT, 'Moodle user id of the admitted student'),
             'programmename' => new external_value(PARAM_TEXT, 'Programme name to show in the email', VALUE_DEFAULT, ''),
-            'portalurl' => new external_value(PARAM_RAW_TRIMMED, 'Public B TI LMS origin or login URL', VALUE_DEFAULT, ''),
+            'portalurl' => new external_value(PARAM_RAW_TRIMMED, 'Public bti LMS origin or login URL', VALUE_DEFAULT, ''),
             'includepassword' => new external_value(PARAM_BOOL, 'Generate and email a temporary password', VALUE_DEFAULT, true),
             'admissionnumber' => new external_value(PARAM_TEXT, 'Admission / student number', VALUE_DEFAULT, ''),
         ]);
