@@ -786,7 +786,7 @@ $tables['local_btiportal_assessment_meta'] = "
         passmark DECIMAL(10,2) NOT NULL DEFAULT 0,
         requirefullscreen TINYINT NOT NULL DEFAULT 0,
         maxwarnings INT NOT NULL DEFAULT 3,
-        warningaction VARCHAR(20) NOT NULL DEFAULT 'submit_flag',
+        warningaction VARCHAR(20) NOT NULL DEFAULT 'flag',
         timecreated BIGINT NOT NULL,
         timemodified BIGINT NOT NULL,
         UNIQUE KEY cmid_uq (cmid),

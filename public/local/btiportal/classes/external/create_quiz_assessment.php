@@ -32,7 +32,7 @@ class create_quiz_assessment extends external_api {
             'shuffleanswers' => new external_value(PARAM_INT, 'Shuffle answer options', VALUE_DEFAULT, 0),
             'requirefullscreen' => new external_value(PARAM_INT, 'Require fullscreen', VALUE_DEFAULT, 0),
             'maxwarnings' => new external_value(PARAM_INT, 'Max window-leave warnings', VALUE_DEFAULT, 3),
-            'warningaction' => new external_value(PARAM_ALPHANUMEXT, 'flag, submit, or submit_flag', VALUE_DEFAULT, 'submit_flag'),
+            'warningaction' => new external_value(PARAM_ALPHANUMEXT, 'flag, submit, or submit_flag', VALUE_DEFAULT, 'flag'),
             'questionsjson' => new external_value(PARAM_RAW, 'JSON array of question objects'),
         ]);
     }

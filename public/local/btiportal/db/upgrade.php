@@ -2272,7 +2272,7 @@ function xmldb_local_btiportal_upgrade($oldversion) {
                     passmark DECIMAL(10,2) NOT NULL DEFAULT 0,
                     requirefullscreen TINYINT NOT NULL DEFAULT 0,
                     maxwarnings INT NOT NULL DEFAULT 3,
-                    warningaction VARCHAR(20) NOT NULL DEFAULT 'submit_flag',
+                    warningaction VARCHAR(20) NOT NULL DEFAULT 'flag',
                     timecreated BIGINT NOT NULL,
                     timemodified BIGINT NOT NULL,
                     UNIQUE KEY cmid_uq (cmid),
@@ -2659,7 +2659,7 @@ function xmldb_local_btiportal_upgrade($oldversion) {
                         'passmark' => 0,
                         'requirefullscreen' => 0,
                         'maxwarnings' => 3,
-                        'warningaction' => 'submit_flag',
+                        'warningaction' => 'flag',
                         'timecreated' => $now,
                         'timemodified' => $now,
                     ]);

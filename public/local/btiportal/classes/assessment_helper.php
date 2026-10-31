@@ -800,7 +800,7 @@ class assessment_helper {
         $passmark = $meta ? (float)$meta->passmark : 0.0;
         $requirefullscreen = $meta ? (int)$meta->requirefullscreen : 0;
         $maxwarnings = $meta ? max(1, (int)$meta->maxwarnings) : 3;
-        $warningaction = $meta ? (string)$meta->warningaction : self::ACTION_SUBMIT_FLAG;
+        $warningaction = $meta ? (string)$meta->warningaction : self::ACTION_FLAG;
 
         self::save_meta(
             $cmid,
@@ -1269,7 +1269,7 @@ class assessment_helper {
                     isset($fields['maxwarnings']) ? max(1, (int)$fields['maxwarnings']) : 3,
                     !empty($fields['warningaction'])
                         ? (string)$fields['warningaction']
-                        : self::ACTION_SUBMIT_FLAG
+                        : self::ACTION_FLAG
                 );
             }
         }
@@ -1640,7 +1640,7 @@ class assessment_helper {
             'currentpage' => (int)$attemptobj->get_currentpage(),
             'requirefullscreen' => $meta ? (int)$meta->requirefullscreen : 0,
             'maxwarnings' => $meta ? (int)$meta->maxwarnings : 3,
-            'warningaction' => $meta->warningaction ?? self::ACTION_SUBMIT_FLAG,
+            'warningaction' => $meta->warningaction ?? self::ACTION_FLAG,
             'warningcount' => $flag ? (int)$flag->warningcount : 0,
             'flagged' => $flag ? (int)$flag->flagged : 0,
             'autosubmitted' => $flag ? (int)$flag->autosubmitted : 0,

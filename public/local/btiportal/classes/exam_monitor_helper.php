@@ -91,7 +91,7 @@ class exam_monitor_helper {
         $maxwarnings = $meta ? max(1, (int)$meta->maxwarnings) : 3;
         $action = ($meta && !empty($meta->warningaction))
             ? (string)$meta->warningaction
-            : assessment_helper::ACTION_SUBMIT_FLAG;
+            : assessment_helper::ACTION_FLAG;
 
         $flag = self::get_or_create_flag((int)$attemptrec->quiz, $attemptid, (int)$attemptrec->userid);
         $flag->warningcount = (int)$flag->warningcount + 1;
