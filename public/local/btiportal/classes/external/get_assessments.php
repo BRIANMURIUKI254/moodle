@@ -9,6 +9,7 @@ use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
 use local_btiportal\assessment_helper;
+use local_btiportal\lecturer_teaching_helper;
 
 class get_assessments extends external_api {
     public static function execute_parameters(): external_function_parameters {
@@ -28,7 +29,19 @@ class get_assessments extends external_api {
         $ids = array_values(array_unique(array_map('intval', $params['courseids'])));
         foreach ($ids as $courseid) {
             $context = \context_course::instance($courseid, IGNORE_MISSING);
-            if ($context) {
+            if (!$context) {
+                continue;
+            }
+
+            // BTI programme assignments authorize lecturers independently
+            // of Moodle enrolment in the programme container course.
+            $hasProgrammeAssignment =
+                lecturer_teaching_helper::user_has_active_programme_course_assignment(
+                    (int)$USER->id,
+                    (int)$courseid
+                );
+
+            if (!$hasProgrammeAssignment) {
                 self::validate_context($context);
             }
         }

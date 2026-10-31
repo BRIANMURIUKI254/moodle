@@ -2592,5 +2592,82 @@ function xmldb_local_btiportal_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026101500, 'local', 'btiportal');
     }
 
+    if ($oldversion < 2026102900) {
+        external_update_descriptions('local_btiportal');
+        $fn = 'local_btiportal_get_my_final_exam_attempt_status';
+        foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+            $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+            if (!$service) {
+                continue;
+            }
+            if (!$DB->record_exists('external_services_functions', [
+                'externalserviceid' => $service->id,
+                'functionname' => $fn,
+            ])) {
+                $DB->insert_record('external_services_functions', (object) [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $fn,
+                ]);
+            }
+        }
+        upgrade_plugin_savepoint(true, 2026102900, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026102901) {
+        if ($DB->get_manager()->table_exists('local_btiportal_assessment_meta')) {
+            $cms = $DB->get_records_sql(
+                "SELECT cm.id AS cmid, cm.course, cm.instance, cm.idnumber
+                   FROM {course_modules} cm
+                   JOIN {modules} m ON m.id = cm.module AND m.name = 'quiz'
+                  WHERE cm.idnumber LIKE 'bti-final-%'",
+                []
+            );
+            foreach ($cms as $cm) {
+                $courseid = (int)$cm->course;
+                $quizid = (int)$cm->instance;
+                $cmid = (int)$cm->cmid;
+                if ($courseid <= SITEID || $quizid <= 0 || $cmid <= 0) {
+                    continue;
+                }
+                if (!$DB->record_exists('quiz', ['id' => $quizid, 'course' => $courseid])) {
+                    continue;
+                }
+
+                $meta = $DB->get_record(
+                    'local_btiportal_assessment_meta',
+                    ['cmid' => $cmid],
+                    'id,cmid,courseid,unitid,module,instanceid,assessmenttype,passmark,requirefullscreen,maxwarnings,warningaction',
+                    IGNORE_MISSING
+                );
+                $now = time();
+                if ($meta) {
+                    $meta->courseid = $courseid;
+                    $meta->unitid = 0;
+                    $meta->module = 'quiz';
+                    $meta->instanceid = $quizid;
+                    $meta->assessmenttype = 'final';
+                    $meta->timemodified = $now;
+                    $DB->update_record('local_btiportal_assessment_meta', $meta);
+                } else {
+                    $DB->insert_record('local_btiportal_assessment_meta', (object)[
+                        'cmid' => $cmid,
+                        'courseid' => $courseid,
+                        'unitid' => 0,
+                        'module' => 'quiz',
+                        'instanceid' => $quizid,
+                        'assessmenttype' => 'final',
+                        'passmark' => 0,
+                        'requirefullscreen' => 0,
+                        'maxwarnings' => 3,
+                        'warningaction' => 'submit_flag',
+                        'timecreated' => $now,
+                        'timemodified' => $now,
+                    ]);
+                }
+            }
+        }
+        upgrade_plugin_savepoint(true, 2026102901, 'local', 'btiportal');
+    }
+
     return true;
 }

@@ -88,6 +88,7 @@ class get_my_lecturer_workspace extends external_api {
         $departments = lecturer_department_helper::list($userid, null, 'active');
         $allunits = lecturer_teaching_helper::list_course_units($userid, 'active');
         $moodlecourses = lecturer_teaching_helper::list_moodle_teaching_courses($userid);
+        $programmecourses = lecturer_teaching_helper::list_assigned_programme_courses($userid);
 
         $now = time();
         $weekstart = strtotime('monday this week', $now);
@@ -170,6 +171,7 @@ class get_my_lecturer_workspace extends external_api {
             'departments' => $departments,
             'courseunits' => $allunits,
             'moodlecourses' => $moodlecourses,
+            'programmecourses' => $programmecourses,
             'workload' => $workload,
             'studenttotal' => $studenttotal,
             'upcomingtimetablesessions' => $mysessions,
@@ -214,6 +216,18 @@ class get_my_lecturer_workspace extends external_api {
             ),
             'moodlecourses' => new external_multiple_structure(
                 new external_single_structure(lecturer_teaching_helper::moodle_teaching_structure_keys())
+            ),
+            'programmecourses' => new external_multiple_structure(
+                new external_single_structure([
+                    'courseid' => new external_value(PARAM_INT, 'Moodle programme course id'),
+                    'programmeid' => new external_value(PARAM_INT, 'Academic programme id'),
+                    'programmecode' => new external_value(PARAM_TEXT, 'Programme code'),
+                    'programmename' => new external_value(PARAM_TEXT, 'Programme name'),
+                    'fullname' => new external_value(PARAM_TEXT, 'Moodle course full name'),
+                    'shortname' => new external_value(PARAM_TEXT, 'Moodle course shortname'),
+                    'visible' => new external_value(PARAM_INT, 'Moodle course visibility'),
+                    'statuslabel' => new external_value(PARAM_ALPHANUMEXT, 'Availability status'),
+                ])
             ),
             'workload' => new external_single_structure(lecturer_teaching_helper::workload_structure_keys()),
             'studenttotal' => new external_value(PARAM_INT, 'studenttotal'),

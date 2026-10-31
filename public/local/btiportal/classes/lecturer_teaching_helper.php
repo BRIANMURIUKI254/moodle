@@ -387,6 +387,103 @@ class lecturer_teaching_helper {
     }
 
     /**
+     * List visible Moodle programme courses for programmes where the lecturer
+     * has at least one active BTI Course Unit teaching assignment.
+     *
+     * Programme mapping is exact: Moodle course.shortname = programme.code.
+     *
+     * @return list<array>
+     */
+    public static function list_assigned_programme_courses(int $userid): array {
+        global $DB;
+
+        if ($userid <= 0) {
+            return [];
+        }
+
+        $sql = "SELECT DISTINCT c.id AS courseid,
+                       p.id AS programmeid,
+                       p.code AS programmecode,
+                       p.name AS programmename,
+                       c.fullname,
+                       c.shortname,
+                       c.visible
+                  FROM {local_btiportal_course_unit_teacher} t
+                  JOIN {local_btiportal_course_unit} cu ON cu.id = t.courseunitid
+                  JOIN {local_btiportal_programme} p ON p.id = cu.programmeid
+                  JOIN {course} c ON c.shortname COLLATE utf8mb4_unicode_ci = p.code COLLATE utf8mb4_unicode_ci
+                 WHERE t.userid = :userid
+                   AND t.status = 'active'
+                   AND cu.status = 'active'
+                   AND cu.programmeid > 0
+                   AND p.status = 'active'
+                   AND c.id > 1
+                   AND c.visible = 1
+              ORDER BY p.name ASC, p.code ASC";
+
+        $rows = $DB->get_records_sql($sql, ['userid' => $userid], 0,
+            academic_constants::LIST_LIMIT);
+        $out = [];
+        foreach ($rows as $row) {
+            $out[] = [
+                'courseid' => (int)$row->courseid,
+                'programmeid' => (int)$row->programmeid,
+                'programmecode' => (string)$row->programmecode,
+                'programmename' => (string)$row->programmename,
+                'fullname' => (string)$row->fullname,
+                'shortname' => (string)$row->shortname,
+                'visible' => (int)$row->visible,
+                'statuslabel' => 'active',
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Validate that a Moodle course is the mapped programme course for a
+     * programme where this lecturer has an active Course Unit assignment.
+     */
+    public static function user_has_active_programme_course_assignment(
+        int $userid,
+        int $courseid
+    ): bool {
+        global $DB;
+
+        if ($userid <= 0 || $courseid <= 1) {
+            return false;
+        }
+
+        return $DB->record_exists_sql(
+            "SELECT 1
+               FROM {local_btiportal_course_unit_teacher} t
+               JOIN {local_btiportal_course_unit} cu ON cu.id = t.courseunitid
+               JOIN {local_btiportal_programme} p ON p.id = cu.programmeid
+               JOIN {course} c ON c.shortname COLLATE utf8mb4_unicode_ci = p.code COLLATE utf8mb4_unicode_ci
+              WHERE t.userid = :userid
+                AND t.status = 'active'
+                AND cu.status = 'active'
+                AND cu.programmeid > 0
+                AND p.status = 'active'
+                AND c.id = :courseid
+                AND c.id > 1
+                AND c.visible = 1",
+            ['userid' => $userid, 'courseid' => $courseid]
+        );
+    }
+
+    /**
+     * Require an active academic teaching assignment for the mapped programme.
+     */
+    public static function require_programme_course_assignment(
+        int $userid,
+        int $courseid
+    ): void {
+        if (!self::user_has_active_programme_course_assignment($userid, $courseid)) {
+            throw new \moodle_exception('notprogrammeassignment', 'local_btiportal');
+        }
+    }
+
+    /**
      * True when the user has an active Moodle teaching enrolment on the course.
      */
     public static function user_teaches_moodle_course(int $userid, int $courseid): bool {

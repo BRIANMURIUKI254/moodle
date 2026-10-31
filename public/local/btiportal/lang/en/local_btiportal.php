@@ -76,6 +76,7 @@ $string['admissionwelcomeemailfailed'] = 'The admission welcome email could not 
 $string['admissionwelcomeemailnouser'] = 'The student account was not found or has no email address.';
 $string['notunitteacher'] = 'You are not assigned to teach this Course Unit.';
 $string['notcourseteacher'] = 'You are not assigned to teach this course.';
+$string['notprogrammeassignment'] = 'You need an active Course Unit teaching assignment in this programme to publish its Final Exam.';
 $string['missingquizcapability'] = 'Your Moodle role does not have the capabilities required to create quizzes and questions in this course.';
 $string['invalidcourseid'] = 'The selected Moodle course is invalid or unavailable.';
 $string['quizcreationfailed'] = 'Moodle could not create the quiz. No assessment was published. Please try again or contact your Moodle administrator.';

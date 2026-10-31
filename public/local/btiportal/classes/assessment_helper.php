@@ -811,7 +811,15 @@ class assessment_helper {
                 || has_capability('moodle/course:view', $context)
                 || has_capability('moodle/grade:viewall', $context);
             $isOwnProgrammeCourse = ($programmeCourseId > 0 && $courseid === $programmeCourseId);
-            if (!$canview && !$isOwnProgrammeCourse) {
+            $isAssignedLecturerProgrammeCourse =
+                lecturer_teaching_helper::user_has_active_programme_course_assignment(
+                    $userid,
+                    $courseid
+                );
+            $isAuthorizedProgrammeCourse =
+                $isOwnProgrammeCourse || $isAssignedLecturerProgrammeCourse;
+
+            if (!$canview && !$isAuthorizedProgrammeCourse) {
                 continue;
             }
 
@@ -826,12 +834,14 @@ class assessment_helper {
                 if (!in_array($cm->modname, ['quiz', 'assign'], true)) {
                     continue;
                 }
-                if (!$cm->uservisible && !has_capability('moodle/course:viewhiddenactivities', $context)) {
+                if (!$cm->uservisible
+                    && !has_capability('moodle/course:viewhiddenactivities', $context)
+                    && !$isAuthorizedProgrammeCourse) {
                     continue;
                 }
                 $row = $metabycmid[(int)$cm->id] ?? null;
 
-                if ($isOwnProgrammeCourse) {
+                if ($isAuthorizedProgrammeCourse) {
                     // Do not expose ordinary quizzes, assignments, or unit-level assessments
                     // from the programme container course.
                     if ($cm->modname !== 'quiz'
@@ -845,7 +855,7 @@ class assessment_helper {
 
                 $item = self::describe_cm($cm, $row);
                 if ($item) {
-                    if ($isOwnProgrammeCourse) {
+                    if ($isAuthorizedProgrammeCourse) {
                         $item['programmeFinalAuthorized'] = 1;
                     }
                     $out[] = $item;
