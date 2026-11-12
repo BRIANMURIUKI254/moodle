@@ -1532,6 +1532,20 @@ $functions = [
         'type'        => 'write',
         'ajax'        => true,
     ],
+    'local_btiportal_bulk_mark_assignment' => [
+        'classname'   => 'local_btiportal\\external\\bulk_mark_assignment',
+        'methodname'  => 'execute',
+        'description' => 'Mark every ungraded assignment submission with one confirmed mark.',
+        'type'        => 'write',
+        'ajax'        => true,
+    ],
+    'local_btiportal_release_assignment_grades' => [
+        'classname'   => 'local_btiportal\\external\\release_assignment_grades',
+        'methodname'  => 'execute',
+        'description' => 'Release assignment grades that are ready for release in Moodle marking workflow.',
+        'type'        => 'write',
+        'ajax'        => true,
+    ],
     'local_btiportal_get_quiz_questions' => [
         'classname'   => 'local_btiportal\\external\\get_quiz_questions',
         'methodname'  => 'execute',
@@ -1579,6 +1593,20 @@ $functions = [
         'methodname'  => 'execute',
         'description' => 'Increment exam window-leave warnings and apply the configured Moodle action.',
         'type'        => 'write',
+        'ajax'        => true,
+    ],
+    'local_btiportal_set_programme_container_course' => [
+        'classname'   => 'local_btiportal\\external\\set_programme_container_course',
+        'methodname'  => 'execute',
+        'description' => 'Map a programme to its Moodle container course for Final Exams.',
+        'type'        => 'write',
+        'ajax'        => true,
+    ],
+    'local_btiportal_get_programme_container_mappings' => [
+        'classname'   => 'local_btiportal\\external\\get_programme_container_mappings',
+        'methodname'  => 'execute',
+        'description' => 'List programme Moodle container mappings and unmapped programmes.',
+        'type'        => 'read',
         'ajax'        => true,
     ],
 ];

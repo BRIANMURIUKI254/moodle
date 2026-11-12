@@ -156,3 +156,6 @@ $string['statusarchived'] = 'Archived';
 $string['schoolnotactive'] = 'School is not active';
 $string['departmentnotfound'] = 'Department not found';
 $string['studentprofileexists'] = 'This user already has a student academic profile';
+$string['gradingconflict'] = 'This question was changed after you opened it. Reload the attempt before saving again.';
+$string['gradelocked'] = 'This grade is locked in Moodle and was not changed.';
+$string['gradeoverridden'] = 'This grade is overridden in the Moodle gradebook and was not changed.';

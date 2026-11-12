@@ -160,6 +160,7 @@ class curriculum_unit_helper {
         }
 
         $assignments = self::list_assignments($curriculumid);
+        student_enrolment_reconcile_helper::enrol_students_for_curriculum($curriculumid);
         return [
             'ok' => true,
             'record' => [

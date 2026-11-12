@@ -390,7 +390,7 @@ class lecturer_teaching_helper {
      * List visible Moodle programme courses for programmes where the lecturer
      * has at least one active BTI Course Unit teaching assignment.
      *
-     * Programme mapping is exact: Moodle course.shortname = programme.code.
+     * Programme mapping uses local_btiportal_programme.containercourseid.
      *
      * @return list<array>
      */
@@ -411,7 +411,7 @@ class lecturer_teaching_helper {
                   FROM {local_btiportal_course_unit_teacher} t
                   JOIN {local_btiportal_course_unit} cu ON cu.id = t.courseunitid
                   JOIN {local_btiportal_programme} p ON p.id = cu.programmeid
-                  JOIN {course} c ON c.shortname COLLATE utf8mb4_unicode_ci = p.code COLLATE utf8mb4_unicode_ci
+                  JOIN {course} c ON c.id = p.containercourseid AND p.containercourseid > 1
                  WHERE t.userid = :userid
                    AND t.status = 'active'
                    AND cu.status = 'active'
@@ -458,7 +458,7 @@ class lecturer_teaching_helper {
                FROM {local_btiportal_course_unit_teacher} t
                JOIN {local_btiportal_course_unit} cu ON cu.id = t.courseunitid
                JOIN {local_btiportal_programme} p ON p.id = cu.programmeid
-               JOIN {course} c ON c.shortname COLLATE utf8mb4_unicode_ci = p.code COLLATE utf8mb4_unicode_ci
+               JOIN {course} c ON c.id = p.containercourseid AND p.containercourseid > 1
               WHERE t.userid = :userid
                 AND t.status = 'active'
                 AND cu.status = 'active'

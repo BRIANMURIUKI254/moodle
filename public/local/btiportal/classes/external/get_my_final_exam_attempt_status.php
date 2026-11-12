@@ -65,16 +65,8 @@ class get_my_final_exam_attempt_status extends external_api {
             );
         }
 
-        $programme = $DB->get_record(
-            'local_btiportal_programme',
-            ['id' => (int)$profile->programmeid],
-            'id,code',
-            IGNORE_MISSING
-        );
-        if (!$programme
-            || trim((string)$programme->code) === ''
-            || trim((string)$programme->code) !== trim((string)$course->shortname)
-        ) {
+        $containerid = \local_btiportal\programme_container_helper::get_container_courseid((int)$profile->programmeid);
+        if ($containerid <= 1 || $containerid !== (int)$course->id) {
             return academic_api_response::for_external(
                 academic_api_response::fail_field('quizid', 'Quiz is outside the student programme')
             );

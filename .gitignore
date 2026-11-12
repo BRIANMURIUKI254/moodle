@@ -20,6 +20,10 @@
 *~
 #
 /config.php
+*.bak
+*.bak*
+*.backup
+*docker-compose*.backup
 /tags
 /TAGS
 /cscope.*

@@ -102,9 +102,12 @@ class moodle_catalogue_sync_helper {
             throw new \invalid_parameter_exception('Category, code and name are required for Moodle course sync');
         }
 
-        $existing = $DB->get_record('course', ['shortname' => $code]);
+        $existing = $DB->get_record('course', ['shortname' => $code], 'id,shortname,category', IGNORE_MISSING);
         if ($existing) {
-            // Keep category aligned when possible.
+            if (programme_container_helper::is_unit_moodle_course((int)$existing->id)) {
+                // Never reuse a unit course as a programme container (shortname collisions).
+                return 0;
+            }
             if ((int)$existing->category !== $categoryid) {
                 $existing->category = $categoryid;
                 $DB->update_record('course', $existing);
@@ -163,13 +166,15 @@ class moodle_catalogue_sync_helper {
             $DB->update_record('local_btiportal_programme', $programme);
         }
 
-        // Also ensure the programme container course exists (course-level sync).
-        self::ensure_programme_course_container(
+        $containerid = self::ensure_programme_course_container(
             $categoryid,
             (string)$programme->code,
             (string)$programme->name,
             (string)($programme->description ?? '')
         );
+        if ($containerid > 1 && programme_container_helper::get_container_courseid((int)$programme->id) <= 1) {
+            programme_container_helper::set_container_courseid((int)$programme->id, $containerid);
+        }
 
         $shortname = self::unique_course_shortname($unitcode);
         $existing = $DB->get_record('course', ['shortname' => $shortname]);

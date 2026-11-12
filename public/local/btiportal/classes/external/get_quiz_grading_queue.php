@@ -11,14 +11,42 @@ use local_btiportal\quiz_grading_helper;
 
 class get_quiz_grading_queue extends external_api {
     public static function execute_parameters(): \core_external\external_function_parameters {
-        return new \core_external\external_function_parameters([]);
+        return new \core_external\external_function_parameters([
+            'courseid' => new external_value(PARAM_INT, 'Limit to one course', VALUE_DEFAULT, 0),
+            'cmid' => new external_value(PARAM_INT, 'Limit to one quiz course module', VALUE_DEFAULT, 0),
+            'status' => new external_value(PARAM_ALPHANUMEXT, 'graded, partial, untouched, needsgrading, or empty', VALUE_DEFAULT, ''),
+            'student' => new external_value(PARAM_TEXT, 'Student name or user id', VALUE_DEFAULT, ''),
+            'page' => new external_value(PARAM_INT, 'Zero-based page', VALUE_DEFAULT, 0),
+            'perpage' => new external_value(PARAM_INT, 'Page size; 0 returns every match', VALUE_DEFAULT, 0),
+        ]);
     }
 
-    public static function execute(): array {
+    public static function execute(
+        int $courseid = 0,
+        int $cmid = 0,
+        string $status = '',
+        string $student = '',
+        int $page = 0,
+        int $perpage = 0
+    ): array {
         global $USER;
 
-        self::validate_parameters(self::execute_parameters(), []);
-        $queue = quiz_grading_helper::get_queue((int)$USER->id);
+        $params = self::validate_parameters(self::execute_parameters(), [
+            'courseid' => $courseid,
+            'cmid' => $cmid,
+            'status' => $status,
+            'student' => $student,
+            'page' => $page,
+            'perpage' => $perpage,
+        ]);
+        $queue = quiz_grading_helper::get_queue((int)$USER->id, [
+            'courseid' => (int)$params['courseid'],
+            'cmid' => (int)$params['cmid'],
+            'status' => (string)$params['status'],
+            'student' => (string)$params['student'],
+            'page' => (int)$params['page'],
+            'perpage' => (int)$params['perpage'],
+        ]);
         debugging(
             'local_btiportal_get_quiz_grading_queue external response count=' . count($queue),
             DEBUG_DEVELOPER
@@ -47,6 +75,9 @@ class get_quiz_grading_queue extends external_api {
             'autogradedcount' => new external_value(PARAM_INT, 'Automatically graded questions'),
             'manuallygradedcount' => new external_value(PARAM_INT, 'Manually graded questions'),
             'inprogresscount' => new external_value(PARAM_INT, 'Questions still in progress'),
+            'gradingstatus' => new external_value(PARAM_ALPHA, 'graded, partial, or untouched', VALUE_DEFAULT, 'untouched'),
+            'queuetotal' => new external_value(PARAM_INT, 'Matches before paging', VALUE_DEFAULT, 0),
+            'fullygradedcount' => new external_value(PARAM_INT, 'Fully graded matches before paging', VALUE_DEFAULT, 0),
         ]));
     }
 }

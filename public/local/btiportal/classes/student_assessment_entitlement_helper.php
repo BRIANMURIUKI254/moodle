@@ -71,23 +71,16 @@ class student_assessment_entitlement_helper {
         $empty['programme_code'] = $programmecode;
 
         $courses = [];
-        if ($programmecode !== '') {
-            $container = $DB->get_record(
-                'course',
-                ['shortname' => $programmecode],
-                'id,shortname,visible',
-                IGNORE_MISSING
+        $container = programme_container_helper::get_container_course((int)$profile['programmeid']);
+        if ($container && (int)$container->visible === 1) {
+            $courses[(int)$container->id] = self::course_row(
+                self::KIND_PROGRAMME_CONTAINER,
+                (int)$container->id,
+                (string)$container->shortname,
+                $programmecode,
+                (string)($programme->name ?? 'Programme'),
+                $programmecode
             );
-            if ($container && (int)$container->id > 1 && (int)$container->visible === 1) {
-                $courses[(int)$container->id] = self::course_row(
-                    self::KIND_PROGRAMME_CONTAINER,
-                    (int)$container->id,
-                    (string)$container->shortname,
-                    $programmecode,
-                    (string)($programme->name ?? 'Programme'),
-                    $programmecode
-                );
-            }
         }
 
         $pathway = student_unit_pathway_helper::get_pathway($userid);

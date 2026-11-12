@@ -46,6 +46,9 @@ class gradebook_helper {
      * @throws \moodle_exception with errorcode notunitteacher
      */
     public static function require_unit_teacher(int $userid, int $courseid, int $unitid): void {
+        if (is_siteadmin($userid)) {
+            return;
+        }
         if (!self::user_is_unit_teacher($userid, $courseid, $unitid)) {
             throw new \moodle_exception(
                 'notunitteacher',
@@ -224,6 +227,11 @@ class gradebook_helper {
             if ($itemmodule === 'assign' && (int)$gi->iteminstance > 0) {
                 $category = $metaByAssign[(int)$gi->iteminstance]['category'] ?? '';
             }
+            $cmid = 0;
+            if (in_array($itemmodule, ['quiz', 'assign'], true) && (int)$gi->iteminstance > 0) {
+                $cm = get_coursemodule_from_instance($itemmodule, (int)$gi->iteminstance, $courseid, false, IGNORE_MISSING);
+                $cmid = $cm ? (int)$cm->id : 0;
+            }
             $gradeitems[] = [
                 'id' => (int)$gi->gradeitemid,
                 'name' => (string)($gi->itemname !== '' && $gi->itemname !== null
@@ -235,9 +243,11 @@ class gradebook_helper {
                 'grademax' => (float)$gi->grademax,
                 'readonly' => $readonly,
                 'readonlyreason' => $readonly
-                    ? 'Quiz grades are not editable in the portal gradebook — grade the quiz in Moodle.'
+                    ? 'Quiz grades are marked from the grading queue. Objective questions are already marked; essays and file uploads are marked there.'
                     : '',
                 'category' => $category,
+                'cmid' => $cmid,
+                'pendingcount' => 0,
             ];
 
             $graderecords = $DB->get_records('grade_grades', ['itemid' => $gi->gradeitemid]);
@@ -245,14 +255,11 @@ class gradebook_helper {
                 if ($gg->finalgrade === null && $gg->rawgrade === null) {
                     continue;
                 }
-                $grades[] = [
-                    'studentid' => (int)$gg->userid,
-                    'gradeitemid' => (int)$gi->gradeitemid,
-                    'grade' => $gg->finalgrade !== null ? (float)$gg->finalgrade : (float)$gg->rawgrade,
-                ];
+                $grades[] = self::format_grade_row($gg, (int)$gi->gradeitemid);
             }
         }
 
+        $gradeitems = self::attach_pending_counts($gradeitems);
         $groups = self::build_gradebook_groups($gradeitems);
         $categoryaverages = self::compute_category_averages($students, $gradeitems, $grades);
         $combinedaverages = self::compute_combined_averages($students, $categoryaverages);
@@ -362,8 +369,10 @@ class gradebook_helper {
                 'grademax' => (float)$gi->grademax,
                 'readonly' => true,
                 'readonlyreason' =>
-                    'Final Exam grades are managed in Moodle and cannot be edited in the portal.',
+                    'Final Exam grades are marked from the grading queue, limited to quizzes tagged as programme Finals.',
                 'category' => '',
+                'cmid' => (int)($gi->cmid ?? 0),
+                'pendingcount' => 0,
             ];
 
             $graderecords = $DB->get_records(
@@ -376,16 +385,11 @@ class gradebook_helper {
                     continue;
                 }
 
-                $grades[] = [
-                    'studentid' => (int)$gg->userid,
-                    'gradeitemid' => $gradeitemid,
-                    'grade' => $gg->finalgrade !== null
-                        ? (float)$gg->finalgrade
-                        : (float)$gg->rawgrade,
-                ];
+                $grades[] = self::format_grade_row($gg, $gradeitemid);
             }
         }
 
+        $gradeitems = self::attach_pending_counts($gradeitems);
         $groups = self::build_gradebook_groups($gradeitems);
 
         // Quiz grades intentionally remain excluded from unit assessment
@@ -579,16 +583,75 @@ class gradebook_helper {
      *
      * @return array{ok:bool, editable:bool, writesource:string, grade:float|null, message:string}
      */
+    /**
+     * @param list<array<string,mixed>> $gradeitems
+     * @return list<array<string,mixed>>
+     */
+    private static function attach_pending_counts(array $gradeitems): array {
+        $quizids = [];
+        foreach ($gradeitems as $item) {
+            if (($item['itemmodule'] ?? '') === 'quiz' && (int)$item['iteminstance'] > 0) {
+                $quizids[] = (int)$item['iteminstance'];
+            }
+        }
+        $quizpending = quiz_grading_helper::pending_attempt_counts($quizids);
+        foreach ($gradeitems as &$item) {
+            if (($item['itemmodule'] ?? '') === 'quiz') {
+                $item['pendingcount'] = $quizpending[(int)$item['iteminstance']] ?? 0;
+            } else if (($item['itemmodule'] ?? '') === 'assign') {
+                $item['pendingcount'] = assignment_grading_helper::ungraded_submission_count((int)$item['iteminstance']);
+            }
+        }
+        unset($item);
+        return $gradeitems;
+    }
+
+    /**
+     * @return array{studentid:int,gradeitemid:int,grade:float,locked:bool,overridden:bool}
+     */
+    private static function format_grade_row(object $gg, int $gradeitemid): array {
+        return [
+            'studentid' => (int)$gg->userid,
+            'gradeitemid' => $gradeitemid,
+            'grade' => $gg->finalgrade !== null ? (float)$gg->finalgrade : (float)$gg->rawgrade,
+            'locked' => !empty($gg->locked),
+            'overridden' => !empty($gg->overridden),
+        ];
+    }
+
     public static function submit_unit_grade(
         int $courseid,
         int $unitid,
         int $studentid,
         int $gradeitemid,
-        float $grade
+        float $grade,
+        string $feedback = '',
+        int $assignmentid = 0,
+        int $attemptnumber = -1,
+        string $workflowstate = ''
     ): array {
-        global $DB, $CFG;
+        global $DB, $CFG, $USER;
 
-        if (!self::mapping_owns_grade_item($courseid, $unitid, $gradeitemid)) {
+        if ($assignmentid > 0 && $gradeitemid <= 0) {
+            $resolved = $DB->get_record('grade_items', [
+                'courseid' => $courseid,
+                'itemtype' => 'mod',
+                'itemmodule' => 'assign',
+                'iteminstance' => $assignmentid,
+                'itemnumber' => 0,
+            ], '*', MUST_EXIST);
+            $gradeitemid = (int)$resolved->id;
+        }
+
+        $assignmentowned = false;
+        if ($assignmentid > 0) {
+            $assignmentowned = assignment_grading_helper::assignment_belongs_to_unit(
+                $assignmentid,
+                $courseid,
+                $unitid
+            );
+        }
+        if (!$assignmentowned && !self::mapping_owns_grade_item($courseid, $unitid, $gradeitemid)) {
             throw new \moodle_exception(
                 'gradeitemnotmapped',
                 'local_btiportal',
@@ -613,37 +676,63 @@ class gradebook_helper {
                 'editable' => false,
                 'writesource' => 'readonly_quiz',
                 'grade' => $current !== null ? $current : -1.0,
-                'message' => 'Quiz grades are not editable here. Open the quiz in Moodle to grade attempts.',
+                'message' => 'Quiz grades are marked from the grading queue, not by typing a total here.',
             ];
         }
 
-        if ($itemmodule === 'assign' && $itemtype === 'mod') {
-            require_once($CFG->dirroot . '/mod/assign/locallib.php');
-            require_once($CFG->dirroot . '/mod/assign/externallib.php');
-            $cm = get_coursemodule_from_instance('assign', $gi->iteminstance, $courseid, false, MUST_EXIST);
-            $modcontext = \context_module::instance($cm->id);
-            require_capability('mod/assign:grade', $modcontext);
+        $lock = self::grade_lock_state($gi, $studentid);
+        if ($lock !== null) {
+            $current = self::read_final_grade($gradeitemid, $studentid);
+            return [
+                'ok' => false,
+                'editable' => false,
+                'writesource' => $lock['writesource'],
+                'grade' => $current !== null ? $current : -1.0,
+                'message' => $lock['message'],
+            ];
+        }
 
-            // Route through the same entry point as the mod_assign_save_grade webservice.
-            \mod_assign_external::save_grade(
+        if ((float)$gi->grademax > 0 && ($grade < (float)$gi->grademin || $grade > (float)$gi->grademax)) {
+            throw new \invalid_parameter_exception('The mark must be between the grade item minimum and maximum.');
+        }
+
+        if ($itemmodule === 'assign' && $itemtype === 'mod') {
+            $before = self::read_final_grade($gradeitemid, $studentid);
+            $result = assignment_grading_helper::save_grade(
                 (int)$gi->iteminstance,
                 $studentid,
                 $grade,
-                -1,
-                false,
-                '',
-                false
+                $feedback,
+                $attemptnumber,
+                $workflowstate,
+                (int)$USER->id
             );
-
             grade_regrade_final_grades($courseid);
             $confirmed = self::read_final_grade($gradeitemid, $studentid);
-
+            if (!$result['unchanged']) {
+                audit_helper::log([
+                    'action' => 'assignment_grade_save',
+                    'entitytype' => 'assign_submission',
+                    'entityid' => (int)$gi->iteminstance,
+                    'before' => ['studentid' => $studentid, 'grade' => $before],
+                    'after' => [
+                        'studentid' => $studentid,
+                        'grade' => $grade,
+                        'feedback' => $feedback,
+                        'attemptnumber' => $attemptnumber,
+                        'workflowstate' => $workflowstate,
+                    ],
+                    'sourcemodule' => 'assignment_grading',
+                ], (int)$USER->id);
+            }
             return [
                 'ok' => true,
                 'editable' => true,
                 'writesource' => 'mod_assign_save_grade',
                 'grade' => $confirmed !== null ? $confirmed : -1.0,
-                'message' => 'Grade saved via mod_assign_save_grade.',
+                'message' => $result['unchanged']
+                    ? 'Grade was already saved.'
+                    : 'Grade saved via mod_assign_save_grade.',
             ];
         }
 
@@ -656,7 +745,26 @@ class gradebook_helper {
             throw new \moodle_exception('invalidgradeitemid', 'error');
         }
 
+        $before = self::read_final_grade($gradeitemid, $studentid);
+        if ($before !== null && abs($before - $grade) < 0.00001 && $feedback === '') {
+            return [
+                'ok' => true,
+                'editable' => true,
+                'writesource' => 'core_grades_update_grades',
+                'grade' => $before,
+                'message' => 'Grade was already saved.',
+            ];
+        }
+
         $gradeitem->update_final_grade($studentid, $grade, 'local_btiportal');
+        audit_helper::log([
+            'action' => 'manual_grade_save',
+            'entitytype' => 'grade_item',
+            'entityid' => $gradeitemid,
+            'before' => ['studentid' => $studentid, 'grade' => $before],
+            'after' => ['studentid' => $studentid, 'grade' => $grade, 'unitid' => $unitid],
+            'sourcemodule' => 'gradebook',
+        ], (int)$USER->id);
 
         grade_regrade_final_grades($courseid);
         $confirmed = self::read_final_grade($gradeitemid, $studentid);
@@ -668,6 +776,37 @@ class gradebook_helper {
             'grade' => $confirmed !== null ? $confirmed : -1.0,
             'message' => 'Grade saved via core gradebook update.',
         ];
+    }
+
+    /**
+     * @return array{writesource:string,message:string}|null
+     */
+    private static function grade_lock_state(object $gradeitem, int $userid): ?array {
+        global $DB;
+
+        if (!empty($gradeitem->locked)) {
+            return [
+                'writesource' => 'grade_locked',
+                'message' => 'This grade item is locked in Moodle. Unlock it in the gradebook before changing it here.',
+            ];
+        }
+        $gradegrade = $DB->get_record('grade_grades', [
+            'itemid' => $gradeitem->id,
+            'userid' => $userid,
+        ]);
+        if ($gradegrade && !empty($gradegrade->overridden)) {
+            return [
+                'writesource' => 'grade_overridden',
+                'message' => 'This grade is overridden in the Moodle gradebook. Remove the override before changing it here.',
+            ];
+        }
+        if ($gradegrade && !empty($gradegrade->locked)) {
+            return [
+                'writesource' => 'grade_locked',
+                'message' => 'This student grade is locked in Moodle. Unlock it before changing it here.',
+            ];
+        }
+        return null;
     }
 
     public static function read_final_grade(int $gradeitemid, int $userid): ?float {

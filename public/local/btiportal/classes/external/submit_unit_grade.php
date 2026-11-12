@@ -20,6 +20,10 @@ class submit_unit_grade extends external_api {
             'studentid' => new external_value(PARAM_INT, 'Student user id'),
             'gradeitemid' => new external_value(PARAM_INT, 'Moodle grade item id'),
             'grade' => new external_value(PARAM_FLOAT, 'Grade value to write'),
+            'feedback' => new external_value(PARAM_RAW, 'Assignment feedback comment', VALUE_DEFAULT, ''),
+            'assignmentid' => new external_value(PARAM_INT, 'Assignment instance when the grade item is resolved from it', VALUE_DEFAULT, 0),
+            'attemptnumber' => new external_value(PARAM_INT, 'Assignment attempt; -1 is the latest', VALUE_DEFAULT, -1),
+            'workflowstate' => new external_value(PARAM_ALPHA, 'Moodle marking workflow state, or empty', VALUE_DEFAULT, ''),
         ]);
     }
 
@@ -28,7 +32,11 @@ class submit_unit_grade extends external_api {
         int $unitid,
         int $studentid,
         int $gradeitemid,
-        float $grade
+        float $grade,
+        string $feedback = '',
+        int $assignmentid = 0,
+        int $attemptnumber = -1,
+        string $workflowstate = ''
     ): array {
         global $USER;
 
@@ -38,6 +46,10 @@ class submit_unit_grade extends external_api {
             'studentid' => $studentid,
             'gradeitemid' => $gradeitemid,
             'grade' => $grade,
+            'feedback' => $feedback,
+            'assignmentid' => $assignmentid,
+            'attemptnumber' => $attemptnumber,
+            'workflowstate' => $workflowstate,
         ]);
 
         $courseid = (int)$params['courseid'];
@@ -59,7 +71,17 @@ class submit_unit_grade extends external_api {
             throw new \moodle_exception('nopermissions', 'error', '', 'edit grades');
         }
 
-        return gradebook_helper::submit_unit_grade($courseid, $unitid, $studentid, $gradeitemid, $grade);
+        return gradebook_helper::submit_unit_grade(
+            $courseid,
+            $unitid,
+            $studentid,
+            $gradeitemid,
+            $grade,
+            (string)$params['feedback'],
+            (int)$params['assignmentid'],
+            (int)$params['attemptnumber'],
+            (string)$params['workflowstate']
+        );
     }
 
     public static function execute_returns(): external_single_structure {

@@ -22,6 +22,7 @@ class student_gradebook_helper {
         }
 
         $results = [];
+        $pendingquizzes = quiz_grading_helper::pending_quiz_ids_for_user($userid);
         $courses = enrol_get_users_courses($userid, true, 'id,fullname,shortname,showgrades,visible');
         foreach ($courses as $course) {
             $courseid = (int)$course->id;
@@ -159,6 +160,9 @@ class student_gradebook_helper {
                             / ((float)$gradeitemdata['grademax'] - (float)$gradeitemdata['grademin']) * 100;
                     }
                     $row['status'] = 'graded';
+                    if ($isquiz && isset($pendingquizzes[$iteminstance]) && $isquizvisible) {
+                        $row['status'] = 'provisional';
+                    }
                     if (!empty($gradeitemdata['gradedategraded'])) {
                         $row['gradedate'] = (int)$gradeitemdata['gradedategraded'];
                     } else if (!empty($gradeitemdata['gradedatesubmitted'])) {

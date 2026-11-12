@@ -206,7 +206,7 @@ class academic_enrolment_helper {
             $oprecord = self::get_operation($opid);
         }
 
-        student_course_access_helper::ensure_pathway_enrolments($userid);
+        student_enrolment_reconcile_helper::enrol_user($userid);
 
         $updated = student_delivery_plan_helper::get_plan($userid);
 

@@ -65,17 +65,16 @@ class student_programme_course_helper {
             $mapped[$cid] = true;
         }
 
-        // Enrolled programme container courses (shortname = programme.code).
-        foreach ($byid as $cid => $course) {
-            if (isset($mapped[$cid])) {
-                continue;
-            }
-            $shortname = trim((string)($course->shortname ?? ''));
-            if ($shortname === '') {
-                continue;
-            }
-            $programme = $DB->get_record('local_btiportal_programme', ['code' => $shortname], 'id,code,name');
-            if (!$programme) {
+        $containers = $DB->get_records_select(
+            'local_btiportal_programme',
+            'containercourseid > 1',
+            null,
+            '',
+            'id,code,name,containercourseid'
+        );
+        foreach ($containers as $programme) {
+            $cid = (int)$programme->containercourseid;
+            if ($cid <= 1 || isset($mapped[$cid]) || !isset($byid[$cid])) {
                 continue;
             }
             $items[] = [

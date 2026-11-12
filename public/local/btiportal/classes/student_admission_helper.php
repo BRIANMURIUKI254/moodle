@@ -45,7 +45,7 @@ class student_admission_helper {
             return ['ok' => false, 'errors' => [['field' => '', 'message' => $e->getMessage()]]];
         }
 
-        return $result;
+        return self::after_admission($userid, $result);
     }
 
     /**
@@ -67,7 +67,29 @@ class student_admission_helper {
 
         $placement['userid'] = $userid;
         $placement = self::infer_org_placement($placement);
-        return student_profile_helper::update((int)$existing->id, $placement, $actorid);
+        $result = student_profile_helper::update((int)$existing->id, $placement, $actorid);
+        return self::after_admission($userid, $result);
+    }
+
+    /**
+     * @param array{ok:bool,record?:array,errors?:list} $result
+     * @return array{ok:bool,record?:array,errors?:list}
+     */
+    private static function after_admission(int $userid, array $result): array {
+        if (empty($result['ok']) || empty($result['record'])) {
+            return $result;
+        }
+        $record = $result['record'];
+        $warnings = programme_container_helper::readiness_warnings(
+            (int)($record['programmeid'] ?? 0),
+            (int)($record['curriculumid'] ?? 0)
+        );
+        $enrol = student_enrolment_reconcile_helper::enrol_user($userid);
+        $record['setupwarning'] = $warnings ? implode(' | ', array_column($warnings, 'message')) : '';
+        $record['enrolmentenrolled'] = (int)($enrol['enrolled'] ?? 0);
+        $result['record'] = $record;
+        $result['warnings'] = $warnings;
+        return $result;
     }
 
     /**

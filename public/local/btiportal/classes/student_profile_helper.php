@@ -433,6 +433,8 @@ class student_profile_helper {
             'timecreated' => new \core_external\external_value(PARAM_INT, 'timecreated'),
             'timemodified' => new \core_external\external_value(PARAM_INT, 'timemodified'),
             'usermodified' => new \core_external\external_value(PARAM_INT, 'usermodified'),
+            'setupwarning' => new \core_external\external_value(PARAM_TEXT, 'Admission setup warning', VALUE_OPTIONAL),
+            'enrolmentenrolled' => new \core_external\external_value(PARAM_INT, 'Courses enrolled at admission', VALUE_OPTIONAL),
         ];
     }
 }

@@ -97,7 +97,10 @@ class moodle_mapping_diagnostics_helper {
         if ($DB->get_manager()->table_exists('local_btiportal_programme')) {
             $programmes = $DB->get_records('local_btiportal_programme', null, 'code ASC', 'id,code,name');
             foreach ($programmes as $programme) {
-                $course = $DB->get_record('course', ['shortname' => (string)$programme->code], 'id,shortname,fullname,visible');
+                $courseid = programme_container_helper::get_container_courseid((int)$programme->id);
+                $course = $courseid > 1
+                    ? $DB->get_record('course', ['id' => $courseid], 'id,shortname,fullname,visible')
+                    : false;
                 if ($course && !isset($linkedcourseids[(int)$course->id])) {
                     // Programme container courses are expected and are not unit mappings.
                     continue;

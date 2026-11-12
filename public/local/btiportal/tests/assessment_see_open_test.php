@@ -23,7 +23,7 @@ final class local_btiportal_assessment_see_open_test extends advanced_testcase {
     public function test_plugin_build_marker_has_version(): void {
         $marker = plugin_build_helper::marker();
         $this->assertNotSame('', $marker['pluginversion']);
-        $this->assertSame('2026111201', $marker['pluginversion']);
+        $this->assertSame('2026111301', $marker['pluginversion']);
         $this->assertArrayHasKey('gitsha', $marker);
     }
 
@@ -35,7 +35,7 @@ final class local_btiportal_assessment_see_open_test extends advanced_testcase {
             $this->fail('Expected typed exception');
         } catch (\moodle_exception $exception) {
             $this->assertSame('not_enrolled', $exception->errorcode);
-            $this->assertStringContainsString('2026111201', (string)$exception->debuginfo);
+            $this->assertStringContainsString('2026111301', (string)$exception->debuginfo);
         }
     }
 
@@ -122,7 +122,7 @@ final class local_btiportal_assessment_see_open_test extends advanced_testcase {
             );
             $this->assertSame('ok', $opened['code'], "Student must OPEN the {$type} assessment");
             $this->assertSame(1, $opened['selfhealed']);
-            $this->assertSame('2026111201', $opened['pluginversion']);
+            $this->assertSame('2026111301', $opened['pluginversion']);
         }
 
         $stranger = $this->getDataGenerator()->create_user();
@@ -160,6 +160,7 @@ final class local_btiportal_assessment_see_open_test extends advanced_testcase {
             'description' => '',
             'departmentid' => 0,
             'moodlecategoryid' => $programmecourse->category,
+            'containercourseid' => $programmecourse->id,
             'status' => 'active',
             'awardtype' => 'diploma',
             'duration' => 2,

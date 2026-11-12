@@ -58,15 +58,19 @@ class programme_helper {
             return ['ok' => false, 'errors' => $errors];
         }
 
+        $containercourseid = 0;
         if ($moodlecategoryid <= 0) {
             try {
                 $moodlecategoryid = moodle_catalogue_sync_helper::ensure_programme_category($code, $name);
-                moodle_catalogue_sync_helper::ensure_programme_course_container(
+                $createdid = moodle_catalogue_sync_helper::ensure_programme_course_container(
                     $moodlecategoryid,
                     $code,
                     $name,
                     $description
                 );
+                if ($createdid > 1 && !programme_container_helper::is_unit_moodle_course($createdid)) {
+                    $containercourseid = $createdid;
+                }
             } catch (\Throwable $e) {
                 return [
                     'ok' => false,
@@ -85,6 +89,7 @@ class programme_helper {
             'description' => $description,
             'departmentid' => $departmentid,
             'moodlecategoryid' => $moodlecategoryid,
+            'containercourseid' => $containercourseid,
             'status' => $status,
             'awardtype' => $awardtype,
             'duration' => $duration,
@@ -282,6 +287,7 @@ class programme_helper {
             'description' => (string)($row->description ?? ''),
             'departmentid' => (int)$row->departmentid,
             'moodlecategoryid' => (int)$row->moodlecategoryid,
+            'containercourseid' => (int)($row->containercourseid ?? 0),
             'status' => (string)$row->status,
             'awardtype' => (string)($row->awardtype ?? 'bachelor'),
             'duration' => (float)($row->duration ?? 0),
@@ -301,6 +307,7 @@ class programme_helper {
             'description' => new \core_external\external_value(PARAM_RAW, 'description'),
             'departmentid' => new \core_external\external_value(PARAM_INT, 'owning department (0 = unassigned)'),
             'moodlecategoryid' => new \core_external\external_value(PARAM_INT, 'optional moodle category'),
+            'containercourseid' => new \core_external\external_value(PARAM_INT, 'Moodle container course id', VALUE_OPTIONAL),
             'status' => new \core_external\external_value(PARAM_ALPHANUMEXT, 'status'),
             'awardtype' => new \core_external\external_value(PARAM_ALPHANUMEXT, 'awardtype'),
             'duration' => new \core_external\external_value(PARAM_FLOAT, 'duration'),

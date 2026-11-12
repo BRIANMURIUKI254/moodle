@@ -18,6 +18,8 @@ class save_quiz_manual_grade extends external_api {
             'slot' => new external_value(PARAM_INT, 'Question slot'),
             'mark' => new external_value(PARAM_FLOAT, 'Question mark'),
             'feedback' => new external_value(PARAM_RAW, 'Lecturer feedback', VALUE_DEFAULT, ''),
+            'expectedversion' => new external_value(PARAM_INT, 'Question step id from the loaded attempt; 0 skips the conflict check', VALUE_DEFAULT, 0),
+            'commentformat' => new external_value(PARAM_INT, 'Moodle text format for the comment', VALUE_DEFAULT, FORMAT_PLAIN),
         ]);
     }
 
@@ -27,7 +29,9 @@ class save_quiz_manual_grade extends external_api {
         int $quizid,
         int $slot,
         float $mark,
-        string $feedback = ''
+        string $feedback = '',
+        int $expectedversion = 0,
+        int $commentformat = FORMAT_PLAIN
     ): array {
         global $USER;
 
@@ -38,6 +42,8 @@ class save_quiz_manual_grade extends external_api {
             'slot' => $slot,
             'mark' => $mark,
             'feedback' => $feedback,
+            'expectedversion' => $expectedversion,
+            'commentformat' => $commentformat,
         ]);
         $cm = get_coursemodule_from_instance(
             'quiz',
@@ -54,7 +60,9 @@ class save_quiz_manual_grade extends external_api {
             (int)$params['slot'],
             (float)$params['mark'],
             (string)$params['feedback'],
-            (int)$USER->id
+            (int)$USER->id,
+            (int)$params['expectedversion'],
+            (int)$params['commentformat']
         );
     }
 
@@ -67,6 +75,9 @@ class save_quiz_manual_grade extends external_api {
             'feedback' => new external_value(PARAM_RAW, 'Saved manual feedback'),
             'attemptsumgrades' => new external_value(PARAM_FLOAT, 'Updated raw attempt total'),
             'quizgrade' => new external_value(PARAM_FLOAT, 'Updated overall quiz grade; -1 if absent'),
+            'unchanged' => new external_value(PARAM_BOOL, 'True when the mark and comment were already saved', VALUE_DEFAULT, false),
+            'notified' => new external_value(PARAM_BOOL, 'True when the student was notified after release', VALUE_DEFAULT, false),
+            'version' => new external_value(PARAM_INT, 'Question step id after the save', VALUE_DEFAULT, 0),
         ]);
     }
 }

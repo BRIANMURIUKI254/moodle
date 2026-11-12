@@ -103,6 +103,7 @@ class academic_course_unit_helper {
         ]);
 
         curriculum_unit_helper::ensure_assignment_for_unit((int)$id);
+        student_enrolment_reconcile_helper::enrol_students_for_curriculum($curriculumid);
 
         return ['ok' => true, 'record' => self::get($id)];
     }
@@ -206,6 +207,7 @@ class academic_course_unit_helper {
         $DB->update_record('local_btiportal_course_unit', $row);
 
         curriculum_unit_helper::ensure_assignment_for_unit((int)$row->id);
+        student_enrolment_reconcile_helper::enrol_students_for_curriculum((int)$row->curriculumid);
 
         return ['ok' => true, 'record' => self::format($row)];
     }

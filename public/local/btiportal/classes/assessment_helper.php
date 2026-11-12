@@ -944,23 +944,17 @@ class assessment_helper {
             return 0;
         }
 
-        $programme = $DB->get_record(
-            'local_btiportal_programme',
-            ['id' => (int)$profile->programmeid],
-            'id,code',
-            IGNORE_MISSING
-        );
+        $containerid = programme_container_helper::get_container_courseid((int)$profile->programmeid);
         $course = $DB->get_record(
             'course',
             ['id' => (int)$cm->course],
             'id,shortname,visible',
             IGNORE_MISSING
         );
-        if (!$programme
+        if ($containerid <= 1
             || !$course
             || (int)$course->visible !== 1
-            || trim((string)$programme->code) === ''
-            || trim((string)$programme->code) !== trim((string)$course->shortname)
+            || $containerid !== (int)$course->id
         ) {
             return 0;
         }
@@ -992,23 +986,8 @@ class assessment_helper {
             return;
         }
 
-        $programme = $DB->get_record(
-            'local_btiportal_programme',
-            ['id' => (int)$profile->programmeid],
-            'id,code',
-            IGNORE_MISSING
-        );
-        if (!$programme || trim((string)$programme->code) === '') {
-            return;
-        }
-
-        $course = $DB->get_record(
-            'course',
-            ['shortname' => trim((string)$programme->code)],
-            'id,shortname,visible',
-            IGNORE_MISSING
-        );
-        if (!$course || (int)$course->id <= 1 || (int)$course->visible !== 1) {
+        $course = programme_container_helper::get_container_course((int)$profile->programmeid);
+        if (!$course || (int)$course->visible !== 1) {
             return;
         }
 
@@ -1403,61 +1382,6 @@ class assessment_helper {
         if ((int)$course->visible !== 1) {
             throw new \moodle_exception('courseunavailable', 'local_btiportal', '', null,
                 'This course is unavailable.');
-        }
-
-        // Live 1.10.12: auto-enrol authorised Arabic Language Final Exam learners.
-        if (strtoupper(trim((string)$course->shortname)) === 'ARA001') {
-            $finalmeta = $DB->get_record(
-                'local_btiportal_assessment_meta',
-                ['cmid' => (int)$cm->id],
-                '*',
-                IGNORE_MISSING
-            );
-
-            $modinfo = get_fast_modinfo((int)$course->id, $userid);
-            $cminfo = $modinfo->get_cm((int)$cm->id);
-
-            if (self::programme_final_authorized($cminfo, $finalmeta ?: null, $userid) === 1) {
-                $user = $DB->get_record(
-                    'user',
-                    ['id' => $userid, 'deleted' => 0],
-                    'id,suspended',
-                    IGNORE_MISSING
-                );
-
-                if (!$user || !empty($user->suspended)) {
-                    throw new \moodle_exception(
-                        'studentnotenrolled',
-                        'local_btiportal',
-                        '',
-                        null,
-                        'Your Moodle account is suspended or unavailable. Please contact your administrator.'
-                    );
-                }
-
-                $enrolmentresult = enrolment_transition_helper::ensure_student_enrolment(
-                    $userid,
-                    (int)$course->id
-                );
-
-                if (empty($enrolmentresult['ok'])) {
-                    throw new \moodle_exception(
-                        'studentnotenrolled',
-                        'local_btiportal',
-                        '',
-                        null,
-                        'Unable to enrol you in the Arabic Language course: ' .
-                            ($enrolmentresult['message'] ?? 'Unknown enrolment error')
-                    );
-                }
-
-                error_log(sprintf(
-                    'btiportal Arabic Final Exam enrolment userid=%d courseid=%d result=%s',
-                    $userid,
-                    (int)$course->id,
-                    $enrolmentresult['message'] ?? 'success'
-                ));
-            }
         }
 
         assessment_access_helper::assert_can_access_assessment($userid, (int)$cm->id, true);

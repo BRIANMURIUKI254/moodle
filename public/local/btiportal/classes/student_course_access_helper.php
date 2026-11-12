@@ -184,16 +184,11 @@ class student_course_access_helper {
             'id,code,name',
             IGNORE_MISSING
         );
-        if (!$programme || trim((string)$programme->code) === '') {
+        if (!$programme) {
             return null;
         }
 
-        $course = $DB->get_record(
-            'course',
-            ['shortname' => trim((string)$programme->code)],
-            'id,shortname,fullname,visible',
-            IGNORE_MISSING
-        );
+        $course = programme_container_helper::get_container_course((int)$programme->id);
         if (!$course || (int)$course->id <= 1) {
             return [
                 'ok' => 0,

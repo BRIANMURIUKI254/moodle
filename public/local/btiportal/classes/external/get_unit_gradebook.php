@@ -81,6 +81,8 @@ class get_unit_gradebook extends external_api {
                 VALUE_DEFAULT,
                 ''
             ),
+            'cmid' => new external_value(PARAM_INT, 'Course module id for the grading queue', VALUE_DEFAULT, 0),
+            'pendingcount' => new external_value(PARAM_INT, 'Attempts or submissions still waiting for a mark', VALUE_DEFAULT, 0),
         ]);
 
         return new external_single_structure([
@@ -105,6 +107,8 @@ class get_unit_gradebook extends external_api {
                     'studentid' => new external_value(PARAM_INT, 'Student id'),
                     'gradeitemid' => new external_value(PARAM_INT, 'Grade item id'),
                     'grade' => new external_value(PARAM_FLOAT, 'Current grade'),
+                    'locked' => new external_value(PARAM_BOOL, 'Moodle grade lock', VALUE_DEFAULT, false),
+                    'overridden' => new external_value(PARAM_BOOL, 'Moodle grade override', VALUE_DEFAULT, false),
                 ])
             ),
             'groups' => new external_multiple_structure(

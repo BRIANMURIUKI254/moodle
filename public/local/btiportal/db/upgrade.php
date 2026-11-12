@@ -2799,5 +2799,73 @@ function xmldb_local_btiportal_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026111201, 'local', 'btiportal');
     }
 
+    if ($oldversion < 2026111301) {
+        $dbman = $DB->get_manager();
+        $table = new xmldb_table('local_btiportal_programme');
+        $field = new xmldb_field('containercourseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'moodlecategoryid');
+        if ($dbman->table_exists($table) && !$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        $index = new xmldb_index('containercourseid_idx', XMLDB_INDEX_NOTUNIQUE, ['containercourseid']);
+        if ($dbman->table_exists($table) && !$dbman->index_exists($table, $index)) {
+            $dbman->add_index($table, $index);
+        }
+
+        \local_btiportal\programme_container_helper::populate_unambiguous();
+
+        external_update_descriptions('local_btiportal');
+        foreach ([
+            'local_btiportal_set_programme_container_course',
+            'local_btiportal_get_programme_container_mappings',
+        ] as $fn) {
+            foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+                $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+                if (!$service) {
+                    continue;
+                }
+                if (!$DB->record_exists('external_services_functions', [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $fn,
+                ])) {
+                    $DB->insert_record('external_services_functions', (object) [
+                        'externalserviceid' => $service->id,
+                        'functionname' => $fn,
+                    ]);
+                }
+            }
+        }
+        \local_btiportal\plugin_build_helper::refresh_git_sha();
+        upgrade_plugin_savepoint(true, 2026111301, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026111401) {
+        external_update_descriptions('local_btiportal');
+        foreach ([
+            'local_btiportal_get_quiz_grading_queue',
+            'local_btiportal_get_quiz_attempt_for_grading',
+            'local_btiportal_save_quiz_manual_grade',
+            'local_btiportal_bulk_mark_assignment',
+            'local_btiportal_release_assignment_grades',
+        ] as $fn) {
+            foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+                $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+                if (!$service || !$DB->record_exists('external_functions', ['name' => $fn])) {
+                    continue;
+                }
+                if (!$DB->record_exists('external_services_functions', [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $fn,
+                ])) {
+                    $DB->insert_record('external_services_functions', (object) [
+                        'externalserviceid' => $service->id,
+                        'functionname' => $fn,
+                    ]);
+                }
+            }
+        }
+        \local_btiportal\plugin_build_helper::refresh_git_sha();
+        upgrade_plugin_savepoint(true, 2026111401, 'local', 'btiportal');
+    }
+
     return true;
 }
