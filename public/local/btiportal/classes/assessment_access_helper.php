@@ -284,6 +284,7 @@ class assessment_access_helper {
             'quizaccessdenied', 'quizdifferentcourse', 'quizinvalidcm', 'quiznoquestions' => self::RESTRICTED,
             'enrolmentsuspended' => self::ENROL_SUSPENDED,
             'enrolmentexpired' => self::ENROL_EXPIRED,
+            'courseunavailable' => self::ACTIVITY_HIDDEN,
             default => $code,
         };
     }

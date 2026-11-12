@@ -385,14 +385,16 @@ class assessment_helper {
             'grademethod' => 1,
             'decimalpoints' => 2,
             'questiondecimalpoints' => -1,
-            'reviewattempt' => $reviewafter,
-            'reviewcorrectness' => 0,
-            'reviewmaxmarks' => $reviewafter,
-            'reviewmarks' => $reviewafter,
-            'reviewspecificfeedback' => 0,
-            'reviewgeneralfeedback' => 0,
-            'reviewrightanswer' => 0,
-            'reviewoverallfeedback' => 0,
+            'attemptduring' => 1,
+            'attemptimmediately' => 1,
+            'attemptopen' => 1,
+            'attemptclosed' => 1,
+            'marksimmediately' => 1,
+            'marksopen' => 1,
+            'marksclosed' => 1,
+            'maxmarksimmediately' => 1,
+            'maxmarksopen' => 1,
+            'maxmarksclosed' => 1,
             'questionsperpage' => 1,
             'navmethod' => 'free',
             'shuffleanswers' => $shuffleanswers ? 1 : 0,
@@ -1381,16 +1383,81 @@ class assessment_helper {
         $quiz = $DB->get_record('quiz', ['id' => $quizid], '*', MUST_EXIST);
         $cm = get_coursemodule_from_instance('quiz', $quizid, 0, false, MUST_EXIST);
 
+        $course = get_course((int)$quiz->course);
+
         if ($courseid > 0 && (int)$courseid !== (int)$quiz->course) {
             throw new \moodle_exception('restricted', 'local_btiportal', '', 'The quiz belongs to a different course.');
         }
-        if ($cmid > 0 && (int)$cmid !== (int)$cm->id) {
+        if ((int)$course->id !== (int)$cm->course || ($cmid > 0 && (int)$cmid !== (int)$cm->id)) {
+            debugging('btiportal launch denied: invalid course-module mapping', DEBUG_DEVELOPER, [
+                'userid' => $userid, 'courseid' => $courseid, 'quizid' => $quizid, 'cmid' => $cmid,
+                'resolvedcmid' => $cm->id
+            ]);
             throw new \moodle_exception(
                 'restricted',
                 'local_btiportal',
                 '',
                 'The Moodle course module mapping for this quiz is invalid.'
             );
+        }
+        if ((int)$course->visible !== 1) {
+            throw new \moodle_exception('courseunavailable', 'local_btiportal', '', null,
+                'This course is unavailable.');
+        }
+
+        // Live 1.10.12: auto-enrol authorised Arabic Language Final Exam learners.
+        if (strtoupper(trim((string)$course->shortname)) === 'ARA001') {
+            $finalmeta = $DB->get_record(
+                'local_btiportal_assessment_meta',
+                ['cmid' => (int)$cm->id],
+                '*',
+                IGNORE_MISSING
+            );
+
+            $modinfo = get_fast_modinfo((int)$course->id, $userid);
+            $cminfo = $modinfo->get_cm((int)$cm->id);
+
+            if (self::programme_final_authorized($cminfo, $finalmeta ?: null, $userid) === 1) {
+                $user = $DB->get_record(
+                    'user',
+                    ['id' => $userid, 'deleted' => 0],
+                    'id,suspended',
+                    IGNORE_MISSING
+                );
+
+                if (!$user || !empty($user->suspended)) {
+                    throw new \moodle_exception(
+                        'studentnotenrolled',
+                        'local_btiportal',
+                        '',
+                        null,
+                        'Your Moodle account is suspended or unavailable. Please contact your administrator.'
+                    );
+                }
+
+                $enrolmentresult = enrolment_transition_helper::ensure_student_enrolment(
+                    $userid,
+                    (int)$course->id
+                );
+
+                if (empty($enrolmentresult['ok'])) {
+                    throw new \moodle_exception(
+                        'studentnotenrolled',
+                        'local_btiportal',
+                        '',
+                        null,
+                        'Unable to enrol you in the Arabic Language course: ' .
+                            ($enrolmentresult['message'] ?? 'Unknown enrolment error')
+                    );
+                }
+
+                error_log(sprintf(
+                    'btiportal Arabic Final Exam enrolment userid=%d courseid=%d result=%s',
+                    $userid,
+                    (int)$course->id,
+                    $enrolmentresult['message'] ?? 'success'
+                ));
+            }
         }
 
         assessment_access_helper::assert_can_access_assessment($userid, (int)$cm->id, true);
