@@ -1525,6 +1525,13 @@ $functions = [
         'type'        => 'write',
         'ajax'        => true,
     ],
+    'local_btiportal_get_assessment_access' => [
+        'classname'   => 'local_btiportal\\external\\get_assessment_access',
+        'methodname'  => 'execute',
+        'description' => 'Return typed access for a quiz or assignment course module for the signed-in student.',
+        'type'        => 'read',
+        'ajax'        => true,
+    ],
     'local_btiportal_log_exam_event' => [
         'classname'   => 'local_btiportal\\external\\log_exam_event',
         'methodname'  => 'execute',

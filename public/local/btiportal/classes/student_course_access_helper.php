@@ -20,13 +20,19 @@ class student_course_access_helper {
         $enrolled = 0;
         $reused = 0;
         $failed = 0;
-        foreach (self::pathway_units($userid) as $unit) {
-            $courseid = (int)($unit['moodlecourseid'] ?? 0);
-            if ($courseid <= 1) {
-                $items[] = self::format_access_row($unit, 'unmapped', 0, 0, 'Course Unit is not connected to Moodle.');
-                continue;
-            }
+
+        $seen = [];
+        $entitlement = student_assessment_entitlement_helper::for_user($userid);
+        foreach ($entitlement['courses'] as $courseid => $meta) {
+            $courseid = (int)$courseid;
+            $seen[$courseid] = true;
             $result = enrolment_transition_helper::ensure_student_enrolment($userid, $courseid);
+            $unit = [
+                'courseunitid' => 0,
+                'code' => (string)($meta['unitcode'] ?? ''),
+                'name' => (string)($meta['unitname'] ?? ''),
+                'moodlecourseid' => $courseid,
+            ];
             if (!empty($result['ok'])) {
                 $enrolled += (int)$result['enrolled'];
                 $reused += (int)$result['reused'];
@@ -41,6 +47,16 @@ class student_course_access_helper {
                     0,
                     'Your Moodle enrolment for this Course Unit is not active. Please contact Academic Administration.'
                 );
+            }
+        }
+
+        foreach (self::pathway_units($userid) as $unit) {
+            $courseid = (int)($unit['moodlecourseid'] ?? 0);
+            if ($courseid > 1 && !empty($seen[$courseid])) {
+                continue;
+            }
+            if ($courseid <= 1) {
+                $items[] = self::format_access_row($unit, 'unmapped', 0, 0, 'Course Unit is not connected to Moodle.');
             }
         }
         return [
@@ -141,6 +157,68 @@ class student_course_access_helper {
             }
         }
         return $pathway;
+    }
+
+    /**
+     * Enrol an active programme student onto the programme Moodle container course.
+     * That course hosts programme Final Exams (unitid = 0) and is not a curriculum unit.
+     *
+     * @return array{ok:int,failed:int,enrolled:int,reused:int,courseid:int,code:string,name:string,message:string}|null
+     */
+    public static function ensure_programme_container_enrolment(int $userid): ?array {
+        global $DB;
+
+        $profile = student_profile_helper::get_by_userid($userid);
+        if (!$profile
+            || ($profile['status'] ?? '') !== 'active'
+            || ($profile['admissionstatus'] ?? '') !== 'active'
+            || ($profile['academicstatus'] ?? '') !== 'active'
+            || (int)($profile['programmeid'] ?? 0) <= 0
+        ) {
+            return null;
+        }
+
+        $programme = $DB->get_record(
+            'local_btiportal_programme',
+            ['id' => (int)$profile['programmeid']],
+            'id,code,name',
+            IGNORE_MISSING
+        );
+        if (!$programme || trim((string)$programme->code) === '') {
+            return null;
+        }
+
+        $course = $DB->get_record(
+            'course',
+            ['shortname' => trim((string)$programme->code)],
+            'id,shortname,fullname,visible',
+            IGNORE_MISSING
+        );
+        if (!$course || (int)$course->id <= 1) {
+            return [
+                'ok' => 0,
+                'failed' => 0,
+                'enrolled' => 0,
+                'reused' => 0,
+                'courseid' => 0,
+                'code' => (string)$programme->code,
+                'name' => (string)$programme->name,
+                'message' => 'Programme Moodle course container was not found.',
+            ];
+        }
+
+        $result = enrolment_transition_helper::ensure_student_enrolment($userid, (int)$course->id);
+        $ok = !empty($result['ok']);
+        return [
+            'ok' => $ok ? 1 : 0,
+            'failed' => $ok ? 0 : 1,
+            'enrolled' => (int)($result['enrolled'] ?? 0),
+            'reused' => (int)($result['reused'] ?? 0),
+            'courseid' => (int)$course->id,
+            'code' => (string)$programme->code,
+            'name' => format_string((string)$course->fullname),
+            'message' => (string)($result['message'] ?? ''),
+        ];
     }
 
     /**

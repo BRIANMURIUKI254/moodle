@@ -10,6 +10,7 @@ use core_external\external_single_structure;
 use core_external\external_value;
 use local_btiportal\assessment_helper;
 use local_btiportal\lecturer_teaching_helper;
+use local_btiportal\student_assessment_entitlement_helper;
 
 class get_assessments extends external_api {
     public static function execute_parameters(): external_function_parameters {
@@ -33,15 +34,14 @@ class get_assessments extends external_api {
                 continue;
             }
 
-            // BTI programme assignments authorize lecturers independently
-            // of Moodle enrolment in the programme container course.
             $hasProgrammeAssignment =
                 lecturer_teaching_helper::user_has_active_programme_course_assignment(
                     (int)$USER->id,
                     (int)$courseid
                 );
+            $entitled = student_assessment_entitlement_helper::is_entitled((int)$USER->id, (int)$courseid);
 
-            if (!$hasProgrammeAssignment) {
+            if (!$hasProgrammeAssignment && !$entitled) {
                 self::validate_context($context);
             }
         }

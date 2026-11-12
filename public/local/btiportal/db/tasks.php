@@ -20,4 +20,13 @@ $tasks = [
         'month' => '*',
         'dayofweek' => '*',
     ],
+    [
+        'classname' => 'local_btiportal\task\reconcile_student_enrolments',
+        'blocking' => 0,
+        'minute' => '40',
+        'hour' => '2',
+        'day' => '*',
+        'month' => '*',
+        'dayofweek' => '*',
+    ],
 ];

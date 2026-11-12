@@ -138,6 +138,31 @@ class academic_enrolment_helper {
         $failed = [];
         $already = $p['alreadyenrolled'];
 
+        $programme = student_course_access_helper::ensure_programme_container_enrolment($userid);
+        if ($programme !== null && empty($programme['ok']) && !empty($programme['failed'])) {
+            $failed[] = [
+                'courseunitid' => 0,
+                'code' => (string)($programme['code'] ?? ''),
+                'name' => (string)($programme['name'] ?? 'Programme'),
+                'moodlecourseid' => (int)($programme['courseid'] ?? 0),
+                'moodlecoursename' => (string)($programme['name'] ?? ''),
+                'requirementtype' => 'programme',
+                'reason' => (string)($programme['message'] ?? ''),
+                'message' => (string)($programme['message'] ?? 'Programme course enrolment failed'),
+            ];
+        } else if ($programme !== null && !empty($programme['ok']) && (int)$programme['enrolled'] > 0) {
+            $enrolled[] = [
+                'courseunitid' => 0,
+                'code' => (string)($programme['code'] ?? ''),
+                'name' => (string)($programme['name'] ?? 'Programme'),
+                'moodlecourseid' => (int)($programme['courseid'] ?? 0),
+                'moodlecoursename' => (string)($programme['name'] ?? ''),
+                'requirementtype' => 'programme',
+                'reason' => 'Programme container',
+                'message' => (string)($programme['message'] ?? 'Enrolled'),
+            ];
+        }
+
         foreach ($allowed as $row) {
             $courseid = (int)$row['moodlecourseid'];
             $ok = self::enrol_student($userid, $courseid);
@@ -180,6 +205,8 @@ class academic_enrolment_helper {
             ]);
             $oprecord = self::get_operation($opid);
         }
+
+        student_course_access_helper::ensure_pathway_enrolments($userid);
 
         $updated = student_delivery_plan_helper::get_plan($userid);
 

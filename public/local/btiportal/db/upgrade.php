@@ -2690,5 +2690,32 @@ function xmldb_local_btiportal_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026103001, 'local', 'btiportal');
     }
 
+    if ($oldversion < 2026103002) {
+        external_update_descriptions('local_btiportal');
+        $fn = 'local_btiportal_get_assessment_access';
+        foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+            $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+            if (!$service) {
+                continue;
+            }
+            if (!$DB->record_exists('external_services_functions', [
+                'externalserviceid' => $service->id,
+                'functionname' => $fn,
+            ])) {
+                $DB->insert_record('external_services_functions', (object) [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $fn,
+                ]);
+            }
+        }
+        upgrade_plugin_savepoint(true, 2026103002, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026103003) {
+        external_update_descriptions('local_btiportal');
+        \local_btiportal\plugin_build_helper::refresh_git_sha();
+        upgrade_plugin_savepoint(true, 2026103003, 'local', 'btiportal');
+    }
+
     return true;
 }

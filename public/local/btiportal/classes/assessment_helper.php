@@ -825,33 +825,9 @@ class assessment_helper {
         global $DB;
         $courseids = array_values(array_unique(array_filter(array_map('intval', $courseids))));
 
-        // Permit an active student to see only their own programme-level Final Exam.
-        // The Moodle programme course shortname must match the programme code.
-        $programmeCourseId = 0;
-        $profile = $DB->get_record('local_btiportal_student_profile', ['userid' => $userid]);
-        if ($profile
-            && strtolower(trim((string)$profile->status)) === 'active'
-            && strtolower(trim((string)$profile->admissionstatus)) === 'active'
-            && strtolower(trim((string)$profile->academicstatus)) === 'active'
-            && (int)$profile->programmeid > 0) {
-            $programme = $DB->get_record(
-                'local_btiportal_programme',
-                ['id' => (int)$profile->programmeid],
-                'id,code,name'
-            );
-            if ($programme && trim((string)$programme->code) !== '') {
-                $programmeCourse = $DB->get_record(
-                    'course',
-                    ['shortname' => trim((string)$programme->code)],
-                    'id,shortname,fullname,visible,category',
-                    IGNORE_MISSING
-                );
-                if ($programmeCourse && (int)$programmeCourse->id > 1
-                    && (int)$programmeCourse->visible === 1) {
-                    $programmeCourseId = (int)$programmeCourse->id;
-                    $courseids[] = $programmeCourseId;
-                }
-            }
+        $entitlement = student_assessment_entitlement_helper::for_user($userid);
+        foreach (array_keys($entitlement['courses']) as $entitledid) {
+            $courseids[] = (int)$entitledid;
         }
 
         $courseids = array_values(array_unique($courseids));
@@ -865,22 +841,19 @@ class assessment_helper {
             if (!$context) {
                 continue;
             }
-            $canview = is_enrolled($context, $userid, '', true)
-                || is_siteadmin($userid)
-                || has_capability('moodle/course:view', $context)
-                || has_capability('moodle/grade:viewall', $context);
-            $isOwnProgrammeCourse = ($programmeCourseId > 0 && $courseid === $programmeCourseId);
+            if (!student_assessment_entitlement_helper::can_see_course_assessments($userid, $courseid)) {
+                continue;
+            }
+            $kind = (string)($entitlement['courses'][$courseid]['kind'] ?? student_assessment_entitlement_helper::KIND_NEITHER);
+            $isOwnProgrammeCourse = $kind === student_assessment_entitlement_helper::KIND_PROGRAMME_CONTAINER;
             $isAssignedLecturerProgrammeCourse =
                 lecturer_teaching_helper::user_has_active_programme_course_assignment(
                     $userid,
                     $courseid
                 );
+            $entitled = $kind !== student_assessment_entitlement_helper::KIND_NEITHER;
             $isAuthorizedProgrammeCourse =
                 $isOwnProgrammeCourse || $isAssignedLecturerProgrammeCourse;
-
-            if (!$canview && !$isAuthorizedProgrammeCourse) {
-                continue;
-            }
 
             $modinfo = get_fast_modinfo($courseid, $userid);
             $meta = $DB->get_records('local_btiportal_assessment_meta', ['courseid' => $courseid], '', '*', IGNORE_MISSING);
@@ -895,7 +868,8 @@ class assessment_helper {
                 }
                 if (!$cm->uservisible
                     && !has_capability('moodle/course:viewhiddenactivities', $context)
-                    && !$isAuthorizedProgrammeCourse) {
+                    && !$isAuthorizedProgrammeCourse
+                    && !$entitled) {
                     continue;
                 }
                 $row = $metabycmid[(int)$cm->id] ?? null;
@@ -909,6 +883,8 @@ class assessment_helper {
                         || (int)$cm->visible !== 1) {
                         continue;
                     }
+                } else if ($entitled && (int)$cm->visible !== 1) {
+                    continue;
                 }
 
                 $item = self::describe_cm($cm, $row, $userid);
@@ -1374,7 +1350,6 @@ class assessment_helper {
         array $preflightdata,
         int $userid
     ): array {
-        global $DB;
         error_log(sprintf(
             'btiportal launch start userid=%d courseid=%d quizid=%d cmid=%d',
             $userid,
@@ -1383,107 +1358,52 @@ class assessment_helper {
             $cmid
         ));
 
+        try {
+            return self::launch_quiz_attempt_typed($quizid, $courseid, $cmid, $preflightdata, $userid);
+        } catch (\Throwable $exception) {
+            assessment_access_helper::rethrow_typed($exception);
+            throw $exception;
+        }
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private static function launch_quiz_attempt_typed(
+        int $quizid,
+        int $courseid,
+        int $cmid,
+        array $preflightdata,
+        int $userid
+    ): array {
+        global $DB;
+
         $quiz = $DB->get_record('quiz', ['id' => $quizid], '*', MUST_EXIST);
-        $course = get_course((int)$quiz->course);
         $cm = get_coursemodule_from_instance('quiz', $quizid, 0, false, MUST_EXIST);
 
         if ($courseid > 0 && (int)$courseid !== (int)$quiz->course) {
-            debugging('btiportal launch denied: course/quiz mismatch', DEBUG_DEVELOPER, [
-                'userid' => $userid, 'courseid' => $courseid, 'quizid' => $quizid, 'cmid' => $cmid
-            ]);
-            throw new \moodle_exception('quizdifferentcourse', 'local_btiportal', '', null,
-                'The quiz belongs to a different course.');
+            throw new \moodle_exception('restricted', 'local_btiportal', '', 'The quiz belongs to a different course.');
         }
-        if ((int)$course->id !== (int)$cm->course || ($cmid > 0 && (int)$cmid !== (int)$cm->id)) {
-            debugging('btiportal launch denied: invalid course-module mapping', DEBUG_DEVELOPER, [
-                'userid' => $userid, 'courseid' => $courseid, 'quizid' => $quizid, 'cmid' => $cmid,
-                'resolvedcmid' => $cm->id
-            ]);
-            throw new \moodle_exception('quizinvalidcm', 'local_btiportal', '', null,
-                'The Moodle course module mapping for this quiz is invalid.');
-        }
-        if ((int)$course->visible !== 1) {
-            throw new \moodle_exception('courseunavailable', 'local_btiportal', '', null,
-                'This course is unavailable.');
-        }
-
-        $coursecontext = \context_course::instance((int)$course->id);
-        $modulecontext = \context_module::instance((int)$cm->id);
-
-        $activeenrolments = $DB->get_records_sql(
-            "SELECT ue.status, ue.timestart, ue.timeend
-               FROM {user_enrolments} ue
-               JOIN {enrol} e ON e.id = ue.enrolid
-              WHERE ue.userid = :userid AND e.courseid = :courseid",
-            ['userid' => $userid, 'courseid' => (int)$course->id]
-        );
-        $suspended = false;
-        $expired = false;
-        $active = false;
-        $now = time();
-        foreach ($activeenrolments as $enrolment) {
-            if ((int)$enrolment->status !== 0) {
-                $suspended = true;
-                continue;
-            }
-            if (!empty($enrolment->timestart) && (int)$enrolment->timestart > $now) {
-                continue;
-            }
-            if (!empty($enrolment->timeend) && (int)$enrolment->timeend < $now) {
-                $expired = true;
-                continue;
-            }
-            $active = true;
-        }
-        if (!$active && $suspended) {
-            throw new \moodle_exception('enrolmentsuspended', 'local_btiportal', '', null,
-                'Your Moodle enrolment in this course is suspended.');
-        }
-        if (!$active && $expired) {
-            throw new \moodle_exception('enrolmentexpired', 'local_btiportal', '', null,
-                'Your Moodle enrolment in this course has expired.');
-        }
-        if (!is_enrolled($coursecontext, $userid, '', true)) {
-            throw new \moodle_exception('studentnotenrolled', 'local_btiportal', '', null,
-                'You are not actively enrolled in this course.');
-        }
-
-        require_capability('mod/quiz:attempt', $modulecontext, $userid);
-        $quizobj = quiz_settings::create((int)$cm->instance, $userid);
-        if (!$quizobj->has_questions()) {
-            throw new \moodle_exception('quiznoquestions', 'local_btiportal', '', null,
-                'This quiz has no questions available.');
-        }
-
-        $accessmanager = $quizobj->get_access_manager(time());
-        $preventreasons = $accessmanager->prevent_access();
-        if (!empty($preventreasons)) {
+        if ($cmid > 0 && (int)$cmid !== (int)$cm->id) {
             throw new \moodle_exception(
-                'quizaccessdenied',
+                'restricted',
                 'local_btiportal',
-                $quizobj->view_url(),
-                implode(' ', array_map(static function ($reason) {
-                    return strip_tags((string)$reason);
-                }, $preventreasons))
+                '',
+                'The Moodle course module mapping for this quiz is invalid.'
             );
         }
+
+        assessment_access_helper::assert_can_access_assessment($userid, (int)$cm->id, true);
+
+        $quizobj = quiz_settings::create((int)$cm->instance, $userid);
+        $accessmanager = $quizobj->get_access_manager(time());
 
         list($currentattemptid, $attemptnumber, $lastattempt, $messages, $page) =
             quiz_validate_new_attempt($quizobj, $accessmanager, false, -1, false);
-        if (!empty($messages)) {
-            throw new \moodle_exception(
-                'quizaccessdenied',
-                'local_btiportal',
-                $quizobj->view_url(),
-                implode(' ', array_map(static function ($message) {
-                    return strip_tags((string)$message);
-                }, $messages))
-            );
-        }
 
         if ($currentattemptid && $lastattempt && $lastattempt->state !== quiz_attempt::NOT_STARTED) {
             if ($lastattempt->state === quiz_attempt::OVERDUE) {
-                throw new \moodle_exception('stateoverdue', 'quiz', $quizobj->view_url());
+                throw new \moodle_exception('closed', 'local_btiportal');
             }
             if ($lastattempt->state === quiz_attempt::IN_PROGRESS) {
                 return [
@@ -1501,9 +1421,9 @@ class assessment_helper {
             $errors = $accessmanager->validate_preflight_check($provideddata, [], $currentattemptid);
             if (!empty($errors)) {
                 throw new \moodle_exception(
-                    'quizaccessdenied',
+                    'password_required',
                     'local_btiportal',
-                    $quizobj->view_url(),
+                    '',
                     implode(' ', array_map(static function ($error) {
                         return strip_tags((string)$error);
                     }, $errors))
