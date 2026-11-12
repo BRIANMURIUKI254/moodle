@@ -248,6 +248,13 @@ $functions = [
         'capabilities'=> 'moodle/grade:viewall',
         'ajax'        => true,
     ],
+    'local_btiportal_get_my_gradebook' => [
+        'classname'   => 'local_btiportal\\external\\get_my_gradebook',
+        'methodname'  => 'execute',
+        'description' => 'Return only the authenticated user\'s Moodle-visible BTI assessment grades.',
+        'type'        => 'read',
+        'ajax'        => true,
+    ],
     'local_btiportal_submit_unit_grade' => [
         'classname'   => 'local_btiportal\\external\\submit_unit_grade',
         'methodname'  => 'execute',
@@ -1502,6 +1509,27 @@ $functions = [
         'methodname'  => 'execute',
         'description' => 'Return Moodle quiz attempt results and integrity flags for teachers.',
         'type'        => 'read',
+        'ajax'        => true,
+    ],
+    'local_btiportal_get_quiz_grading_queue' => [
+        'classname'   => 'local_btiportal\\external\\get_quiz_grading_queue',
+        'methodname'  => 'execute',
+        'description' => 'List finished quiz attempts with questions requiring manual grading for assigned teachers.',
+        'type'        => 'read',
+        'ajax'        => true,
+    ],
+    'local_btiportal_get_quiz_attempt_for_grading' => [
+        'classname'   => 'local_btiportal\\external\\get_quiz_attempt_for_grading',
+        'methodname'  => 'execute',
+        'description' => 'Return submitted quiz responses and grading state for an authorized teacher.',
+        'type'        => 'read',
+        'ajax'        => true,
+    ],
+    'local_btiportal_save_quiz_manual_grade' => [
+        'classname'   => 'local_btiportal\\external\\save_quiz_manual_grade',
+        'methodname'  => 'execute',
+        'description' => 'Save one Moodle-native manual quiz question grade and recalculate quiz grades.',
+        'type'        => 'write',
         'ajax'        => true,
     ],
     'local_btiportal_get_quiz_questions' => [

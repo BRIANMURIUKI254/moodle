@@ -2690,5 +2690,65 @@ function xmldb_local_btiportal_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026103001, 'local', 'btiportal');
     }
 
+    if ($oldversion < 2026110201) {
+        // Register the Moodle-native quiz grading external functions.
+        external_update_descriptions('local_btiportal');
+
+        $gradingfunctions = [
+            'local_btiportal_get_quiz_grading_queue',
+            'local_btiportal_get_quiz_attempt_for_grading',
+            'local_btiportal_save_quiz_manual_grade',
+        ];
+
+        // Add the functions to the existing BTI web service.
+        foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+            $service = $DB->get_record(
+                'external_services',
+                ['shortname' => $shortname],
+                '*',
+                IGNORE_MISSING
+            );
+
+            if (!$service) {
+                continue;
+            }
+
+            foreach ($gradingfunctions as $functionname) {
+                if ($DB->record_exists('external_functions', ['name' => $functionname])
+                        && !$DB->record_exists('external_services_functions', [
+                            'externalserviceid' => $service->id,
+                            'functionname' => $functionname,
+                        ])) {
+                    $DB->insert_record('external_services_functions', (object)[
+                        'externalserviceid' => $service->id,
+                        'functionname' => $functionname,
+                    ]);
+                }
+            }
+        }
+
+        upgrade_plugin_savepoint(true, 2026110201, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026110202) {
+        external_update_descriptions('local_btiportal');
+        $functionname = 'local_btiportal_get_my_gradebook';
+        foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+            $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+            if (!$service || !$DB->record_exists('external_functions', ['name' => $functionname])
+                    || $DB->record_exists('external_services_functions', [
+                        'externalserviceid' => $service->id,
+                        'functionname' => $functionname,
+                    ])) {
+                continue;
+            }
+            $DB->insert_record('external_services_functions', (object)[
+                'externalserviceid' => $service->id,
+                'functionname' => $functionname,
+            ]);
+        }
+        upgrade_plugin_savepoint(true, 2026110202, 'local', 'btiportal');
+    }
+
     return true;
 }

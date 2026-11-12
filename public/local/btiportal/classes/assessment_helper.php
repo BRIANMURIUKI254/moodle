@@ -385,14 +385,16 @@ class assessment_helper {
             'grademethod' => 1,
             'decimalpoints' => 2,
             'questiondecimalpoints' => -1,
-            'reviewattempt' => $reviewafter,
-            'reviewcorrectness' => 0,
-            'reviewmaxmarks' => $reviewafter,
-            'reviewmarks' => $reviewafter,
-            'reviewspecificfeedback' => 0,
-            'reviewgeneralfeedback' => 0,
-            'reviewrightanswer' => 0,
-            'reviewoverallfeedback' => 0,
+            'attemptduring' => 1,
+            'attemptimmediately' => 1,
+            'attemptopen' => 1,
+            'attemptclosed' => 1,
+            'marksimmediately' => 1,
+            'marksopen' => 1,
+            'marksclosed' => 1,
+            'maxmarksimmediately' => 1,
+            'maxmarksopen' => 1,
+            'maxmarksclosed' => 1,
             'questionsperpage' => 1,
             'navmethod' => 'free',
             'shuffleanswers' => $shuffleanswers ? 1 : 0,
@@ -1409,6 +1411,61 @@ class assessment_helper {
 
         $coursecontext = \context_course::instance((int)$course->id);
         $modulecontext = \context_module::instance((int)$cm->id);
+
+        // Restrict automatic enrolment to authorised Arabic Language Final Exam learners.
+        if (strtoupper(trim((string)$course->shortname)) === 'ARA001') {
+            $finalmeta = $DB->get_record(
+                'local_btiportal_assessment_meta',
+                ['cmid' => (int)$cm->id],
+                '*',
+                IGNORE_MISSING
+            );
+
+            $modinfo = get_fast_modinfo((int)$course->id, $userid);
+            $cminfo = $modinfo->get_cm((int)$cm->id);
+
+            if (self::programme_final_authorized($cminfo, $finalmeta ?: null, $userid) === 1) {
+                $user = $DB->get_record(
+                    'user',
+                    ['id' => $userid, 'deleted' => 0],
+                    'id,suspended',
+                    IGNORE_MISSING
+                );
+
+                if (!$user || !empty($user->suspended)) {
+                    throw new \moodle_exception(
+                        'studentnotenrolled',
+                        'local_btiportal',
+                        '',
+                        null,
+                        'Your Moodle account is suspended or unavailable. Please contact your administrator.'
+                    );
+                }
+
+                $enrolmentresult = enrolment_transition_helper::ensure_student_enrolment(
+                    $userid,
+                    (int)$course->id
+                );
+
+                if (empty($enrolmentresult['ok'])) {
+                    throw new \moodle_exception(
+                        'studentnotenrolled',
+                        'local_btiportal',
+                        '',
+                        null,
+                        'Unable to enrol you in the Arabic Language course: ' .
+                            ($enrolmentresult['message'] ?? 'Unknown enrolment error')
+                    );
+                }
+
+                error_log(sprintf(
+                    'btiportal Arabic Final Exam enrolment userid=%d courseid=%d result=%s',
+                    $userid,
+                    (int)$course->id,
+                    $enrolmentresult['message'] ?? 'success'
+                ));
+            }
+        }
 
         $activeenrolments = $DB->get_records_sql(
             "SELECT ue.status, ue.timestart, ue.timeend

@@ -19,7 +19,7 @@ services:
     depends_on:
       - db
     ports:
-      - "8081:80"
+      - "127.0.0.1:8090:80"
     volumes:
       - .:/var/www/html
       - moodledata:/var/www/moodledata
@@ -43,8 +43,8 @@ services:
     container_name: moodle-mailpit
     restart: unless-stopped
     ports:
-      - "8025:8025"
-      - "1025:1025"
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
 
 volumes:
   db_data:
