@@ -67,6 +67,7 @@ class get_quiz_grading_queue extends external_api {
             'assessmenttype' => new external_value(PARAM_ALPHANUMEXT, 'BTI assessment type'),
             'unitid' => new external_value(PARAM_INT, 'Unit id; zero for Final Exams'),
             'attemptnumber' => new external_value(PARAM_INT, 'Attempt number'),
+            'reopenavailable' => new external_value(PARAM_BOOL, 'Whether this student can take the reopened quiz now'),
             'submitted' => new external_value(PARAM_INT, 'Submission timestamp'),
             'attemptsumgrades' => new external_value(PARAM_FLOAT, 'Raw attempt total; -1 if unavailable'),
             'overallgrade' => new external_value(PARAM_FLOAT, 'Overall quiz grade; -1 if unavailable'),

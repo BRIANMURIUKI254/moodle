@@ -168,6 +168,7 @@ class quiz_grading_helper {
                 'assessmenttype' => (string)$attempt->assessmenttype,
                 'unitid' => (int)$attempt->resolvedunitid,
                 'attemptnumber' => (int)$attempt->attempt,
+                'reopenavailable' => self::reopen_available($attempt),
                 'submitted' => (int)$attempt->timefinish,
                 'attemptsumgrades' => $attempt->attemptsumgrades === null
                     ? -1.0
@@ -208,6 +209,39 @@ class quiz_grading_helper {
         );
 
         return $queue;
+    }
+
+    /** Whether this finished attempt is the one a teacher reopened for a retake. */
+    private static function reopen_available(object $attempt): bool {
+        global $DB;
+
+        $policy = $DB->get_record('local_btiportal_quiz_user', [
+            'quizid' => (int)$attempt->quizid,
+            'userid' => (int)$attempt->userid,
+        ]);
+        if (!$policy || empty($policy->latestgrade)
+                || (int)$policy->gradefromattempt !== (int)$attempt->attempt) {
+            return false;
+        }
+        $latestfinished = $DB->get_field_sql(
+            "SELECT MAX(attempt) FROM {quiz_attempts}
+              WHERE quiz = :quizid AND userid = :userid AND state = :finished AND preview = 0",
+            ['quizid' => (int)$attempt->quizid, 'userid' => (int)$attempt->userid,
+                'finished' => quiz_attempt::FINISHED]
+        );
+        if ((int)$latestfinished !== (int)$policy->gradefromattempt) {
+            return false;
+        }
+        $quiz = $DB->get_record('quiz', ['id' => (int)$attempt->quizid], 'timeopen, timeclose, attempts', MUST_EXIST);
+        $override = $DB->get_record('quiz_overrides', [
+            'quiz' => (int)$attempt->quizid,
+            'userid' => (int)$attempt->userid,
+        ]);
+        $timeopen = $override && $override->timeopen !== null ? (int)$override->timeopen : (int)$quiz->timeopen;
+        $timeclose = $override && $override->timeclose !== null ? (int)$override->timeclose : (int)$quiz->timeclose;
+        $attempts = $override && $override->attempts !== null ? (int)$override->attempts : (int)$quiz->attempts;
+        return $timeopen <= time() && $timeclose > time()
+            && ($attempts === 0 || $attempts > (int)$attempt->attempt);
     }
 
     /**
