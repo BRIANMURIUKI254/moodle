@@ -1525,6 +1525,20 @@ $functions = [
         'type'        => 'read',
         'ajax'        => true,
     ],
+    'local_btiportal_get_quiz_student_settings' => [
+        'classname'   => 'local_btiportal\\external\\get_quiz_student_settings',
+        'methodname'  => 'execute',
+        'description' => 'Return effective quiz settings and integrity state for a student.',
+        'type'        => 'read',
+        'ajax'        => true,
+    ],
+    'local_btiportal_reopen_quiz_for_student' => [
+        'classname'   => 'local_btiportal\\external\\reopen_quiz_for_student',
+        'methodname'  => 'execute',
+        'description' => 'Reopen a quiz for one student with individual settings and latest-attempt grading.',
+        'type'        => 'write',
+        'ajax'        => true,
+    ],
     'local_btiportal_save_quiz_manual_grade' => [
         'classname'   => 'local_btiportal\\external\\save_quiz_manual_grade',
         'methodname'  => 'execute',

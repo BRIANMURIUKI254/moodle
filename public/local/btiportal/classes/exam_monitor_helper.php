@@ -88,10 +88,18 @@ class exam_monitor_helper {
         $attemptobj = quiz_attempt::create($attemptid);
         $cmid = (int)$attemptobj->get_cmid();
         $meta = $DB->get_record('local_btiportal_assessment_meta', ['cmid' => $cmid]);
-        $maxwarnings = $meta ? max(1, (int)$meta->maxwarnings) : 3;
-        $action = ($meta && !empty($meta->warningaction))
-            ? (string)$meta->warningaction
-            : assessment_helper::ACTION_FLAG;
+        $policy = $DB->get_record('local_btiportal_quiz_user', [
+            'quizid' => (int)$attemptrec->quiz,
+            'userid' => (int)$attemptrec->userid,
+        ]);
+        $maxwarnings = $policy
+            ? max(1, (int)$policy->maxwarnings)
+            : ($meta ? max(1, (int)$meta->maxwarnings) : 3);
+        $action = ($policy && !empty($policy->warningaction))
+            ? (string)$policy->warningaction
+            : (($meta && !empty($meta->warningaction))
+                ? (string)$meta->warningaction
+                : assessment_helper::ACTION_FLAG);
 
         $flag = self::get_or_create_flag((int)$attemptrec->quiz, $attemptid, (int)$attemptrec->userid);
         $flag->warningcount = (int)$flag->warningcount + 1;
@@ -199,7 +207,12 @@ class exam_monitor_helper {
             'attemptid' => $attemptid,
             'userid' => $userid,
             'warningcount' => 0,
-            'flagged' => 0,
+            'flagged' => (int)$DB->get_field(
+                'local_btiportal_quiz_user',
+                'flagged',
+                ['quizid' => $quizid, 'userid' => $userid],
+                IGNORE_MISSING
+            ),
             'autosubmitted' => 0,
             'lastaction' => '',
             'timemodified' => time(),

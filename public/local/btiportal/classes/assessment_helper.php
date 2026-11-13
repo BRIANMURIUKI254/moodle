@@ -1452,6 +1452,10 @@ class assessment_helper {
         $quiz = $attemptobj->get_quiz();
         $cmid = (int)$attemptobj->get_cmid();
         $meta = $DB->get_record('local_btiportal_assessment_meta', ['cmid' => $cmid]);
+        $userpolicy = $DB->get_record('local_btiportal_quiz_user', [
+            'quizid' => (int)$quiz->id,
+            'userid' => $owner,
+        ]);
         $flag = $DB->get_record('local_btiportal_exam_flag', ['attemptid' => $attemptid]);
         $endtime = 0;
         try {
@@ -1549,9 +1553,15 @@ class assessment_helper {
             'timeopen' => (int)$quiz->timeopen,
             'timeclose' => (int)$quiz->timeclose,
             'currentpage' => (int)$attemptobj->get_currentpage(),
-            'requirefullscreen' => $meta ? (int)$meta->requirefullscreen : 0,
-            'maxwarnings' => $meta ? (int)$meta->maxwarnings : 3,
-            'warningaction' => $meta->warningaction ?? self::ACTION_FLAG,
+            'requirefullscreen' => $userpolicy
+                ? (int)$userpolicy->requirefullscreen
+                : ($meta ? (int)$meta->requirefullscreen : 0),
+            'maxwarnings' => $userpolicy
+                ? (int)$userpolicy->maxwarnings
+                : ($meta ? (int)$meta->maxwarnings : 3),
+            'warningaction' => $userpolicy && $userpolicy->warningaction !== ''
+                ? (string)$userpolicy->warningaction
+                : (string)($meta->warningaction ?? self::ACTION_FLAG),
             'warningcount' => $flag ? (int)$flag->warningcount : 0,
             'flagged' => $flag ? (int)$flag->flagged : 0,
             'autosubmitted' => $flag ? (int)$flag->autosubmitted : 0,

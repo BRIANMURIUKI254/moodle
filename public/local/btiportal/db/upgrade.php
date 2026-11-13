@@ -2867,5 +2867,50 @@ function xmldb_local_btiportal_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026111401, 'local', 'btiportal');
     }
 
+    if ($oldversion < 2026111402) {
+        $dbman = $DB->get_manager();
+        $table = new xmldb_table('local_btiportal_quiz_user');
+        if (!$dbman->table_exists($table)) {
+            $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE);
+            $table->add_field('quizid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $table->add_field('requirefullscreen', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('maxwarnings', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '3');
+            $table->add_field('warningaction', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'flag');
+            $table->add_field('latestgrade', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('flagged', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('gradefromattempt', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+            $table->add_index('quizuserid_uq', XMLDB_INDEX_UNIQUE, ['quizid', 'userid']);
+            $dbman->create_table($table);
+        }
+
+        external_update_descriptions('local_btiportal');
+        foreach ([
+            'local_btiportal_get_quiz_student_settings',
+            'local_btiportal_reopen_quiz_for_student',
+        ] as $fn) {
+            foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+                $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+                if (!$service || !$DB->record_exists('external_functions', ['name' => $fn])) {
+                    continue;
+                }
+                if (!$DB->record_exists('external_services_functions', [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $fn,
+                ])) {
+                    $DB->insert_record('external_services_functions', (object)[
+                        'externalserviceid' => $service->id,
+                        'functionname' => $fn,
+                    ]);
+                }
+            }
+        }
+        \local_btiportal\plugin_build_helper::refresh_git_sha();
+        upgrade_plugin_savepoint(true, 2026111402, 'local', 'btiportal');
+    }
+
     return true;
 }
