@@ -13,7 +13,7 @@ if ($hassiteconfig && isset($ADMIN) && $ADMIN->fulltree && isset($settings) && $
         'local_btiportal/portalurl',
         get_string('portalurl', 'local_btiportal'),
         get_string('portalurl_desc', 'local_btiportal'),
-        '',
+        'https://lms.bticollege.ac.ke',
         PARAM_RAW_TRIMMED
     ));
 }

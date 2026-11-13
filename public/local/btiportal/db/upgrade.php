@@ -2912,5 +2912,29 @@ function xmldb_local_btiportal_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026111402, 'local', 'btiportal');
     }
 
+    if ($oldversion < 2026111403) {
+        if (!get_config('local_btiportal', 'portalurl')) {
+            set_config('portalurl', 'https://lms.bticollege.ac.ke', 'local_btiportal');
+        }
+        external_update_descriptions('local_btiportal');
+        foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+            $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+            if (!$service || !$DB->record_exists('external_functions', ['name' => 'local_btiportal_complete_password_reset'])) {
+                continue;
+            }
+            if (!$DB->record_exists('external_services_functions', [
+                'externalserviceid' => $service->id,
+                'functionname' => 'local_btiportal_complete_password_reset',
+            ])) {
+                $DB->insert_record('external_services_functions', (object)[
+                    'externalserviceid' => $service->id,
+                    'functionname' => 'local_btiportal_complete_password_reset',
+                ]);
+            }
+        }
+        \local_btiportal\plugin_build_helper::refresh_git_sha();
+        upgrade_plugin_savepoint(true, 2026111403, 'local', 'btiportal');
+    }
+
     return true;
 }

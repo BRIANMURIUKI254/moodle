@@ -8,10 +8,21 @@ $string['passwordmustdiffer'] = 'New password must be different from your curren
 $string['passwordpolicyfailed'] = 'New password does not meet Moodle password policy: {$a}';
 $string['passwordchanged'] = 'Password updated successfully.';
 $string['temppasswordneedidentifier'] = 'Enter your Moodle username or the email on your account.';
-$string['temppasswordemailsent'] = 'If an account matches, a temporary password has been emailed. Check your inbox (and spam), then sign in and change the password.';
+$string['temppasswordemailsent'] = 'If an account matches, a password reset link has been emailed. Check your inbox (and spam), then choose a new password on the bti LMS portal.';
+$string['passwordresetrequestaccepted'] = 'If an account matches, a password reset link has been emailed. Check your inbox (and spam).';
+$string['passwordresetemailsubject'] = '{$a}: reset your bti LMS password';
+$string['passwordresetemailintro'] = 'We received a request to reset your {$a} password.';
+$string['passwordresetemailbutton'] = 'Choose a new password';
+$string['passwordresetemailexpiry'] = 'This one-use link expires in {$a} minutes. If you did not request it, you can ignore this email.';
+$string['passwordresetemailbody'] = 'We received a request to reset your {$a->sitename} password.
+
+Choose a new password using this secure, one-use link:
+{$a->link}
+
+If you did not request a reset, you can ignore this email.';
 $string['temppasswordemailfailed'] = 'Moodle could not send the password email. Ask an administrator to check outgoing mail settings.';
 $string['portalurl'] = 'Student portal URL';
-$string['portalurl_desc'] = 'Public URL of bti LMS used in admission emails (for example https://lms.example.com). The /login path is added automatically. If empty, the portal will send the URL with each admission.';
+$string['portalurl_desc'] = 'Trusted public HTTPS origin of bti LMS (for example https://lms.example.com). Used in password reset links. Configure this before enabling portal password reset.';
 $string['admissionwelcomesubject'] = 'Congratulations — you have been admitted to BTI College';
 $string['admissionwelcomeprogrammefallback'] = 'your programme of study';
 $string['admissionwelcomeidfallback'] = 'as issued';

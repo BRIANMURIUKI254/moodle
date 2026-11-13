@@ -111,7 +111,15 @@ $functions = [
     'local_btiportal_email_temporary_password' => [
         'classname'   => 'local_btiportal\\external\\email_temporary_password',
         'methodname'  => 'execute',
-        'description' => 'Generate a temporary Moodle password and email it (portal forgot-password).',
+        'description' => 'Email a one-use password reset link to the configured portal (portal forgot-password).',
+        'type'        => 'write',
+        'ajax'        => true,
+        'loginrequired' => false,
+    ],
+    'local_btiportal_complete_password_reset' => [
+        'classname'   => 'local_btiportal\\external\\complete_password_reset',
+        'methodname'  => 'execute',
+        'description' => 'Set a Moodle password using a valid one-use email reset token.',
         'type'        => 'write',
         'ajax'        => true,
         'loginrequired' => false,
