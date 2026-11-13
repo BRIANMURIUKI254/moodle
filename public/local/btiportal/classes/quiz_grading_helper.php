@@ -782,10 +782,16 @@ class quiz_grading_helper {
     ): string {
         if ($question->get_type_name() === 'essay') {
             $response = $questionattempt->get_last_qt_data();
-            $answer = $response['answer'] ?? '';
+            // Read the response directly from the question attempt as some
+            // essay behaviours persist answer and answerformat in separate
+            // steps, so the latest step's data may not contain both values.
+            $answer = $questionattempt->get_last_qt_var('answer', $response['answer'] ?? '');
             if (is_string($answer) && $answer !== '') {
-                $format = (int)($response['answerformat'] ?? FORMAT_PLAIN);
-                return $format === FORMAT_HTML ? html_to_text($answer) : $answer;
+                $format = (int)$questionattempt->get_last_qt_var(
+                    'answerformat',
+                    $response['answerformat'] ?? FORMAT_PLAIN
+                );
+                return \question_utils::to_plain_text($answer, $format, ['para' => false]);
             }
         }
         return (string)($questionattempt->get_response_summary() ?? '');
