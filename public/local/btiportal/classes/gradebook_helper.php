@@ -240,6 +240,7 @@ class gradebook_helper {
                 'itemmodule' => $itemmodule,
                 'itemtype' => $itemtype,
                 'iteminstance' => (int)$gi->iteminstance,
+                'grademin' => (float)$gi->grademin,
                 'grademax' => (float)$gi->grademax,
                 'readonly' => $readonly,
                 'readonlyreason' => $readonly
@@ -326,6 +327,7 @@ class gradebook_helper {
                     gi.itemmodule,
                     gi.itemtype,
                     gi.iteminstance,
+                    gi.grademin,
                     gi.grademax,
                     am.cmid
                FROM {local_btiportal_assessment_meta} am
@@ -366,6 +368,7 @@ class gradebook_helper {
                 'itemmodule' => 'quiz',
                 'itemtype' => (string)$gi->itemtype,
                 'iteminstance' => $iteminstance,
+                'grademin' => (float)$gi->grademin,
                 'grademax' => (float)$gi->grademax,
                 'readonly' => true,
                 'readonlyreason' =>
