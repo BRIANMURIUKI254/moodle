@@ -1,6 +1,8 @@
 <?php
 namespace local_btiportal;
 
+use mod_quiz\quiz_attempt;
+
 defined('MOODLE_INTERNAL') || die();
 
 /**
@@ -60,9 +62,6 @@ class student_gradebook_helper {
                 $isquiz = $gradeitemdata['itemtype'] === 'mod' && $itemmodule === 'quiz';
                 $nativegradehidden = !empty($gradeitemdata['gradeishidden'])
                     || !empty($gradeitemdata['gradehiddenbydate']);
-                if ($nativegradehidden && !$isquiz) {
-                    continue;
-                }
 
                 $gradeitemid = (int)$gradeitemdata['id'];
                 $iteminstance = (int)$gradeitemdata['iteminstance'];
@@ -103,9 +102,56 @@ class student_gradebook_helper {
 
                 $quizgrade = null;
                 $isquizvisible = true;
+                $portalquizgrade = null;
+                $portalquizgradevisible = false;
                 if ($isquiz) {
                     $quizgrade = \mod_quiz_external::get_user_best_grade($iteminstance, $userid);
                     $isquizvisible = !empty($quizgrade['hasgrade']);
+                    // The portal releases a quiz grade as soon as all finished
+                    // attempts are marked, even when Moodle's review options
+                    // hide marks on the quiz review page.
+                    if (!isset($pendingquizzes[$iteminstance])) {
+                        $portalquizgrade = $DB->get_field('quiz_grades', 'grade', [
+                            'quiz' => $iteminstance,
+                            'userid' => $userid,
+                        ]);
+                        $portalquizgradevisible = $portalquizgrade !== false
+                            && $portalquizgrade !== null
+                            && is_numeric($portalquizgrade);
+                        $isquizvisible = $isquizvisible || $portalquizgradevisible;
+                    }
+                }
+
+                $submitted = $isquiz
+                    ? $DB->record_exists_select(
+                        'quiz_attempts',
+                        'quiz = :quizid AND userid = :userid AND state = :finished AND preview = 0',
+                        [
+                            'quizid' => $iteminstance,
+                            'userid' => $userid,
+                            'finished' => quiz_attempt::FINISHED,
+                        ]
+                    )
+                    : $DB->record_exists('assign_submission', [
+                        'assignment' => $iteminstance,
+                        'userid' => $userid,
+                        'status' => 'submitted',
+                    ]);
+
+                $portalassignmentgrade = null;
+                $portalassignmentgradevisible = false;
+                if (!$isquiz && $nativegradehidden && $submitted
+                        && empty($gradeitemdata['gradeneedsupdate'])) {
+                    $portalassignmentgrade = $DB->get_field('grade_grades', 'finalgrade', [
+                        'itemid' => $gradeitemid,
+                        'userid' => $userid,
+                    ]);
+                    $portalassignmentgradevisible = $portalassignmentgrade !== false
+                        && $portalassignmentgrade !== null
+                        && is_numeric($portalassignmentgrade);
+                }
+                if ($nativegradehidden && !$isquiz && !$portalassignmentgradevisible) {
+                    continue;
                 }
 
                 $row = [
@@ -118,6 +164,7 @@ class student_gradebook_helper {
                     'assessmenttype' => $assessment['type'],
                     'isfinalexam' => $assessment['isfinalexam'],
                     'status' => 'pending',
+                    'submitted' => $submitted,
                 ];
                 if (!empty($assessment['assessmentdate'])) {
                     $row['assessmentdate'] = $assessment['assessmentdate'];
@@ -136,9 +183,11 @@ class student_gradebook_helper {
                     }
                 }
 
-                $hasrange = !$nativegradehidden
+                $portalassessmentgradevisible = $portalquizgradevisible || $portalassignmentgradevisible;
+                $gradehidden = $nativegradehidden && !$portalassessmentgradevisible;
+                $hasrange = !$gradehidden
                     && $isquizvisible
-                    && empty($gradeitemdata['gradeneedsupdate'])
+                    && ($portalquizgradevisible || empty($gradeitemdata['gradeneedsupdate']))
                     && isset($gradeitemdata['grademin'], $gradeitemdata['grademax'])
                     && is_numeric($gradeitemdata['grademin'])
                     && is_numeric($gradeitemdata['grademax'])
@@ -147,13 +196,18 @@ class student_gradebook_helper {
                     $row['maximum'] = (float)$gradeitemdata['grademax'];
                 }
 
-                $hasgrade = !$nativegradehidden
+                $gradevalue = $portalquizgradevisible
+                    ? $portalquizgrade
+                    : ($portalassignmentgradevisible
+                        ? $portalassignmentgrade
+                        : ($gradeitemdata['graderaw'] ?? null));
+                $hasgrade = !$gradehidden
                     && $isquizvisible
-                    && empty($gradeitemdata['gradeneedsupdate'])
-                    && isset($gradeitemdata['graderaw'])
-                    && is_numeric($gradeitemdata['graderaw']);
+                    && ($portalquizgradevisible || empty($gradeitemdata['gradeneedsupdate']))
+                    && $gradevalue !== null
+                    && is_numeric($gradevalue);
                 if ($hasgrade) {
-                    $score = (float)$gradeitemdata['graderaw'];
+                    $score = (float)$gradevalue;
                     $row['score'] = $score;
                     if ($hasrange) {
                         $row['percentage'] = ($score - (float)$gradeitemdata['grademin'])

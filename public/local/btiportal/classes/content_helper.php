@@ -676,12 +676,11 @@ class content_helper {
     }
 
     /**
-     * Issue (or return existing) Moodle-stored PDF certificate when portal resources are 100% complete.
-     * Automatic: fires from set_resource_completion and from ensure_certificate WS (catch-up).
-     */
-    /**
+     * Issue (or return existing) Moodle-stored PDF certificate when the submitted,
+     * graded assessment average is above 60 percent.
+     *
      * @param string $portalbaseurl Portal origin used in certificate QR (e.g. https://portal.example.com)
-     * @param bool $force Skip 100% completion check (admin reissue / CLI).
+     * @param bool $force Skip the assessment average check (admin reissue / CLI).
      */
     public static function ensure_certificate_for_course(int $userid, int $courseid, string $portalbaseurl = '', bool $force = false): ?array {
         global $DB, $CFG;
@@ -701,8 +700,11 @@ class content_helper {
             return self::format_certificate($existing);
         }
 
-        if (!$force && !self::portal_resources_fully_complete($userid, $courseid)) {
-            return null;
+        if (!$force) {
+            $average = self::submitted_assessment_average($userid, $courseid);
+            if ($average === null || $average <= 60.0) {
+                return null;
+            }
         }
 
         $user = $DB->get_record('user', ['id' => $userid], 'id,firstname,lastname', MUST_EXIST);
@@ -787,6 +789,27 @@ class content_helper {
         return self::format_certificate(
             $DB->get_record('local_btiportal_certificate', ['id' => $id], '*', MUST_EXIST)
         );
+    }
+
+    /**
+     * Arithmetic average of normalized marks for submitted and fully graded course assessments.
+     */
+    private static function submitted_assessment_average(int $userid, int $courseid): ?float {
+        $percentages = [];
+        foreach (student_gradebook_helper::get_gradebook($userid) as $grade) {
+            if ((int)$grade['courseid'] !== $courseid || empty($grade['submitted'])
+                    || ($grade['status'] ?? '') !== 'graded'
+                    || !isset($grade['score'], $grade['maximum'])
+                    || !is_numeric($grade['score']) || !is_numeric($grade['maximum'])
+                    || (float)$grade['maximum'] <= 0) {
+                continue;
+            }
+            $percentages[] = ((float)$grade['score'] / (float)$grade['maximum']) * 100;
+        }
+        if (!$percentages) {
+            return null;
+        }
+        return array_sum($percentages) / count($percentages);
     }
 
     public static function list_certificates_for_user(int $userid, array $courseids = []): array {

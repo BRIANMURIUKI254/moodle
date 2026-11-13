@@ -44,6 +44,7 @@ class get_my_gradebook extends external_api {
                 'maximum' => new external_value(PARAM_FLOAT, 'Maximum grade when the range is valid', VALUE_OPTIONAL),
                 'percentage' => new external_value(PARAM_FLOAT, 'Normalized grade percentage', VALUE_OPTIONAL),
                 'status' => new external_value(PARAM_ALPHA, 'graded, pending, or provisional while essays still need marking'),
+                'submitted' => new external_value(PARAM_BOOL, 'Whether the student submitted this assessment'),
                 'isfinalexam' => new external_value(PARAM_BOOL, 'Whether this is a course-level Final Exam'),
                 'feedback' => new external_value(PARAM_RAW, 'Visible Moodle grade feedback', VALUE_OPTIONAL),
                 'feedbackformat' => new external_value(PARAM_INT, 'Moodle feedback format', VALUE_OPTIONAL),
