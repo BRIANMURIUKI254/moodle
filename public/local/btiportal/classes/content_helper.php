@@ -773,7 +773,6 @@ class content_helper {
         $percentages = [];
         foreach (student_gradebook_helper::get_gradebook($userid) as $grade) {
             if ((int)$grade['courseid'] !== $courseid || empty($grade['submitted'])
-                    || ($grade['status'] ?? '') !== 'graded'
                     || !isset($grade['score'], $grade['maximum'])
                     || !is_numeric($grade['score']) || !is_numeric($grade['maximum'])
                     || (float)$grade['maximum'] <= 0) {
