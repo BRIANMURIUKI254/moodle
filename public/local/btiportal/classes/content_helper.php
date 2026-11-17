@@ -643,8 +643,6 @@ class content_helper {
                     'timecreated' => time(),
                 ]);
             }
-            // Auto-issue a persisted certificate once portal resource progress hits 100%.
-            self::ensure_certificate_for_course($userid, (int)$resource->courseid);
         } else if ($existing) {
             $DB->delete_records('local_btiportal_resource_completion', ['id' => $existing->id]);
         }
@@ -653,31 +651,8 @@ class content_helper {
     }
 
     /**
-     * Whether every portal resource for the course is marked complete by the user.
-     * Matches portal courseProgressWithPortalResources when Moodle activity completion is unused:
-     * portal resources are the countable items (Moodle modules with completion===1 also count in the UI,
-     * but on this instance none are configured — certificate gating uses portal resources only).
-     */
-    public static function portal_resources_fully_complete(int $userid, int $courseid): bool {
-        global $DB;
-        $resources = $DB->get_records('local_btiportal_resource', ['courseid' => $courseid], '', 'id');
-        if (!$resources) {
-            return false;
-        }
-        foreach ($resources as $resource) {
-            if (!$DB->record_exists('local_btiportal_resource_completion', [
-                'resourceid' => (int)$resource->id,
-                'userid' => $userid,
-            ])) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /**
-     * Issue (or return existing) Moodle-stored PDF certificate when the submitted,
-     * graded assessment average is above 60 percent.
+     * Issue (or return existing) Moodle-stored PDF certificate when the average
+     * across submitted, graded assessments (including final exams) is at least 60 percent.
      *
      * @param string $portalbaseurl Portal origin used in certificate QR (e.g. https://portal.example.com)
      * @param bool $force Skip the assessment average check (admin reissue / CLI).
@@ -702,7 +677,7 @@ class content_helper {
 
         if (!$force) {
             $average = self::submitted_assessment_average($userid, $courseid);
-            if ($average === null || $average <= 60.0) {
+            if ($average === null || $average < 60.0) {
                 return null;
             }
         }
