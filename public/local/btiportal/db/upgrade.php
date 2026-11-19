@@ -2936,5 +2936,40 @@ function xmldb_local_btiportal_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026111403, 'local', 'btiportal');
     }
 
+    if ($oldversion < 2026111901) {
+        // Ensure the portal's user-scoped tokens can load inboxes, send direct/group messages,
+        // and update read state. Core functions still enforce Moodle's user permissions.
+        $functions = [
+            'core_message_get_conversations',
+            'core_message_get_conversation_messages',
+            'core_message_get_unread_conversations_count',
+            'core_message_mark_all_conversation_messages_as_read',
+            'core_message_search_contacts',
+            'core_message_send_instant_messages',
+            'core_message_send_messages_to_conversation',
+        ];
+        foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+            $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+            if (!$service) {
+                continue;
+            }
+            foreach ($functions as $functionname) {
+                if (!$DB->record_exists('external_functions', ['name' => $functionname])) {
+                    continue;
+                }
+                if (!$DB->record_exists('external_services_functions', [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $functionname,
+                ])) {
+                    $DB->insert_record('external_services_functions', (object)[
+                        'externalserviceid' => $service->id,
+                        'functionname' => $functionname,
+                    ]);
+                }
+            }
+        }
+        upgrade_plugin_savepoint(true, 2026111901, 'local', 'btiportal');
+    }
+
     return true;
 }
