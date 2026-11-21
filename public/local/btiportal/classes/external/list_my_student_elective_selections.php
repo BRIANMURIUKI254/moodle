@@ -10,6 +10,7 @@ use core_external\external_single_structure;
 use core_external\external_value;
 use local_btiportal\academic_api_response;
 use local_btiportal\academic_auth_helper;
+use local_btiportal\fees_gate_helper;
 use local_btiportal\elective_helper;
 
 /** Self-scoped elective selections for the signed-in student. */
@@ -29,6 +30,7 @@ class list_my_student_elective_selections extends external_api {
             'status' => $status,
         ]);
         $userid = academic_auth_helper::resolve_student_userid_for_read(0);
+        fees_gate_helper::require_cleared($userid);
         $items = elective_helper::list_student_selections(
             $userid,
             (int)$params['academicyearid'],

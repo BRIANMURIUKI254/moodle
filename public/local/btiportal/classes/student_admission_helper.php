@@ -84,9 +84,9 @@ class student_admission_helper {
             (int)($record['programmeid'] ?? 0),
             (int)($record['curriculumid'] ?? 0)
         );
-        $enrol = student_enrolment_reconcile_helper::enrol_user($userid);
         $record['setupwarning'] = $warnings ? implode(' | ', array_column($warnings, 'message')) : '';
-        $record['enrolmentenrolled'] = (int)($enrol['enrolled'] ?? 0);
+        $record['enrolmentenrolled'] = 0;
+        student_fees_helper::ensure_unpaid_row($userid, 0);
         $result['record'] = $record;
         $result['warnings'] = $warnings;
         return $result;
@@ -95,6 +95,11 @@ class student_admission_helper {
     /**
      * Fill school/department from the programme's department when the caller left them empty.
      */
+    /** Public entry for CMS upsert (same rules as admit). */
+    public static function infer_org_placement_public(array $placement): array {
+        return self::infer_org_placement($placement);
+    }
+
     private static function infer_org_placement(array $placement): array {
         global $DB;
 

@@ -8,6 +8,7 @@ use core_external\external_function_parameters;
 use core_external\external_value;
 use local_btiportal\academic_api_response;
 use local_btiportal\academic_auth_helper;
+use local_btiportal\fees_gate_helper;
 use local_btiportal\progression_eligibility_helper;
 
 /** Self-scoped progression eligibility for the signed-in student. */
@@ -26,6 +27,7 @@ class get_my_progression_eligibility extends external_api {
     public static function execute(string $actiontype = 'semester_progression'): array {
         $params = self::validate_parameters(self::execute_parameters(), ['actiontype' => $actiontype]);
         $userid = academic_auth_helper::resolve_student_userid_for_read(0);
+        fees_gate_helper::require_cleared($userid);
         $result = progression_eligibility_helper::assess($userid, $params['actiontype']);
         if (!$result['ok']) {
             return academic_api_response::for_external(academic_api_response::fail($result['errors'] ?? []));

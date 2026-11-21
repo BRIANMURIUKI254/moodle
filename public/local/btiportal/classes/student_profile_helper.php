@@ -196,6 +196,7 @@ class student_profile_helper {
             'intake' => trim((string)$pick('intake', '')),
             'scholarship' => trim((string)$pick('scholarship', '')),
             'sponsor' => trim((string)$pick('sponsor', '')),
+            'advisoruserid' => (int)$pick('advisoruserid', 0),
         ];
     }
 
@@ -368,6 +369,7 @@ class student_profile_helper {
             'intake' => (string)($row->intake ?? ''),
             'scholarship' => (string)($row->scholarship ?? ''),
             'sponsor' => (string)($row->sponsor ?? ''),
+            'advisoruserid' => (int)($row->advisoruserid ?? 0),
             'timecreated' => (int)$row->timecreated,
             'timemodified' => (int)$row->timemodified,
             'usermodified' => (int)($row->usermodified ?? 0),
@@ -430,6 +432,7 @@ class student_profile_helper {
             'intake' => new \core_external\external_value(PARAM_TEXT, 'intake', VALUE_OPTIONAL),
             'scholarship' => new \core_external\external_value(PARAM_TEXT, 'scholarship', VALUE_OPTIONAL),
             'sponsor' => new \core_external\external_value(PARAM_TEXT, 'sponsor', VALUE_OPTIONAL),
+            'advisoruserid' => new \core_external\external_value(PARAM_INT, 'Academic advisor Moodle user id', VALUE_DEFAULT, 0),
             'timecreated' => new \core_external\external_value(PARAM_INT, 'timecreated'),
             'timemodified' => new \core_external\external_value(PARAM_INT, 'timemodified'),
             'usermodified' => new \core_external\external_value(PARAM_INT, 'usermodified'),

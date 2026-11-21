@@ -16,6 +16,21 @@ class student_course_access_helper {
      * @return array{ok:bool,userid:int,items:list,enrolled:int,reused:int,failed:int}
      */
     public static function ensure_pathway_enrolments(int $userid): array {
+        if (fees_gate_helper::is_enabled()
+            && fees_gate_helper::is_subject_to_gate($userid)
+            && !student_fees_helper::is_paid($userid)) {
+            return [
+                'ok' => 1,
+                'userid' => $userid,
+                'moodleuserid' => $userid,
+                'items' => [],
+                'enrolled' => 0,
+                'reused' => 0,
+                'failed' => 0,
+                'count' => 0,
+                'skipped' => 'fees_unpaid',
+            ];
+        }
         $items = [];
         $enrolled = 0;
         $reused = 0;

@@ -9,6 +9,7 @@ use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
 use local_btiportal\content_helper;
+use local_btiportal\fees_gate_helper;
 use local_btiportal\department_auth_helper;
 
 class get_announcements extends external_api {
@@ -30,6 +31,7 @@ class get_announcements extends external_api {
         if (!isloggedin() || isguestuser()) {
             throw new \moodle_exception('noguest');
         }
+        fees_gate_helper::require_cleared((int)$USER->id);
 
         $allowed = [];
         foreach ($courseids as $courseid) {

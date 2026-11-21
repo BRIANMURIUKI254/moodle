@@ -9,6 +9,7 @@ use core_external\external_single_structure;
 use core_external\external_value;
 use local_btiportal\academic_api_response;
 use local_btiportal\academic_auth_helper;
+use local_btiportal\fees_gate_helper;
 
 class get_my_final_exam_attempt_status extends external_api {
     public static function execute_parameters(): external_function_parameters {
@@ -20,6 +21,9 @@ class get_my_final_exam_attempt_status extends external_api {
     public static function execute(int $quizid): array {
         global $DB;
 
+        $userid = academic_auth_helper::resolve_student_userid_for_read(0);
+        fees_gate_helper::require_cleared($userid);
+
         $params = self::validate_parameters(self::execute_parameters(), compact('quizid'));
         $quizid = (int)$params['quizid'];
         if ($quizid <= 0) {
@@ -27,8 +31,6 @@ class get_my_final_exam_attempt_status extends external_api {
                 academic_api_response::fail_field('quizid', 'A valid quiz id is required')
             );
         }
-
-        $userid = academic_auth_helper::resolve_student_userid_for_read(0);
         $profile = $DB->get_record(
             'local_btiportal_student_profile',
             ['userid' => $userid],

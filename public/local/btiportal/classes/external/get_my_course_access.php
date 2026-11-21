@@ -8,6 +8,7 @@ use core_external\external_function_parameters;
 use core_external\external_value;
 use local_btiportal\academic_api_response;
 use local_btiportal\academic_auth_helper;
+use local_btiportal\fees_gate_helper;
 use local_btiportal\student_course_access_helper;
 
 class get_my_course_access extends external_api {
@@ -18,8 +19,9 @@ class get_my_course_access extends external_api {
     }
 
     public static function execute(int $courseid): array {
-        $params = self::validate_parameters(self::execute_parameters(), compact('courseid'));
         $userid = academic_auth_helper::resolve_student_userid_for_read(0);
+        fees_gate_helper::require_cleared($userid);
+        $params = self::validate_parameters(self::execute_parameters(), compact('courseid'));
         $access = student_course_access_helper::course_access($userid, (int)$params['courseid']);
         return academic_api_response::for_external(academic_api_response::ok($access));
     }

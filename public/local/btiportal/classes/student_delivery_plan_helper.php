@@ -21,6 +21,7 @@ class student_delivery_plan_helper {
         if (!$profile) {
             return ['ok' => false, 'errors' => [['field' => 'userid', 'message' => 'Student academic profile not found']]];
         }
+        fees_gate_helper::require_cleared($userid);
 
         $profile = self::resolve_placement_gaps($profile, true);
 

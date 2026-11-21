@@ -1,0 +1,5 @@
+# Dev-only CLI utilities (not deployed).
+/cli/ensure_fees_gate_test_users.php
+/cli/fix_fee_test_profiles.php
+/cli/verify_fees_gate_matrix.php
+/cli/test_*.php

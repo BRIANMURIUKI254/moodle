@@ -9,6 +9,7 @@ use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
 use local_btiportal\academic_auth_helper;
+use local_btiportal\fees_gate_helper;
 use local_btiportal\student_gradebook_helper;
 
 /**
@@ -24,6 +25,7 @@ class get_my_gradebook extends external_api {
 
         self::validate_parameters(self::execute_parameters(), []);
         $userid = academic_auth_helper::resolve_student_userid_for_read((int)$USER->id);
+        fees_gate_helper::require_cleared($userid);
 
         return ['grades' => student_gradebook_helper::get_gradebook($userid)];
     }

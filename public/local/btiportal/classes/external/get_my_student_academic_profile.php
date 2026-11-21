@@ -8,6 +8,7 @@ use core_external\external_function_parameters;
 use core_external\external_value;
 use local_btiportal\academic_api_response;
 use local_btiportal\academic_auth_helper;
+use local_btiportal\fees_gate_helper;
 use local_btiportal\student_portal_helper;
 use local_btiportal\student_profile_helper;
 
@@ -20,6 +21,7 @@ class get_my_student_academic_profile extends external_api {
     public static function execute(): array {
         self::validate_parameters(self::execute_parameters(), []);
         $userid = academic_auth_helper::resolve_student_userid_for_read(0);
+        fees_gate_helper::require_cleared($userid);
         $row = student_profile_helper::get_by_userid($userid);
         if (!$row) {
             return academic_api_response::for_external(

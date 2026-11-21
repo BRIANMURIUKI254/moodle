@@ -130,3 +130,69 @@ function local_btiportal_pluginfile($course, $cm, $context, $filearea, $args, $f
     send_stored_file($file, 0, 0, $forcedownload, $options);
     return true;
 }
+
+/**
+ * Enforce fees-gate messaging limits on core message web services (not only site privacy settings).
+ *
+ * @param \stdClass $externalfunctioninfo
+ * @param array $params
+ * @return array|false Return WS payload to short-circuit, or false to run the real function.
+ */
+function local_btiportal_override_webservice_execution($externalfunctioninfo, $params) {
+    global $USER;
+
+    $fname = $externalfunctioninfo->name ?? '';
+    if (\local_btiportal\fees_core_ws_gate::should_block((int)$USER->id, $fname)) {
+        throw new \moodle_exception(\local_btiportal\fees_gate_helper::ERROR_CODE, 'local_btiportal');
+    }
+
+    if ($fname !== 'core_message_send_instant_messages') {
+        return false;
+    }
+
+    if (!\local_btiportal\fees_messaging_helper::sender_is_fees_restricted((int)$USER->id)) {
+        return false;
+    }
+
+    $messages = $params[0] ?? [];
+    if (!is_array($messages) || !$messages) {
+        return false;
+    }
+
+    $allowed = [];
+    $blocked = [];
+    foreach ($messages as $message) {
+        $toid = (int)($message['touserid'] ?? 0);
+        if (\local_btiportal\fees_messaging_helper::can_send((int)$USER->id, $toid)) {
+            $allowed[] = $message;
+        } else {
+            $blocked[] = $message;
+        }
+    }
+
+    if (!$blocked) {
+        return false;
+    }
+
+    require_once($GLOBALS['CFG']->dirroot . '/message/externallib.php');
+
+    $results = [];
+    if ($allowed) {
+        $results = \core_message_external::send_instant_messages($allowed);
+        $results = \core_external\external_api::clean_returnvalue(
+            \core_message_external::send_instant_messages_returns(),
+            $results
+        );
+    }
+
+    foreach ($blocked as $message) {
+        $results[] = [
+            'msgid' => -1,
+            'errormessage' => get_string('feesmessagingblocked', 'local_btiportal'),
+            'cantsendtouser' => fullname(\core_user::get_user((int)$message['touserid'])),
+            'candeletemessagesforallusers' => false,
+        ];
+    }
+
+    return $results;
+}

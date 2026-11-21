@@ -8,6 +8,7 @@ use core_external\external_function_parameters;
 use core_external\external_value;
 use local_btiportal\academic_api_response;
 use local_btiportal\academic_auth_helper;
+use local_btiportal\fees_gate_helper;
 use local_btiportal\student_delivery_plan_helper;
 
 /** Self-scoped academic delivery plan for the signed-in student. */
@@ -19,6 +20,7 @@ class get_my_student_delivery_plan extends external_api {
     public static function execute(): array {
         self::validate_parameters(self::execute_parameters(), []);
         $userid = academic_auth_helper::resolve_student_userid_for_read(0);
+        fees_gate_helper::require_cleared($userid);
         $result = student_delivery_plan_helper::get_plan($userid);
         if (!$result['ok']) {
             return academic_api_response::for_external(academic_api_response::fail($result['errors']));

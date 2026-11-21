@@ -199,6 +199,7 @@ class student_portal_helper {
         global $DB, $USER;
 
         $userid = (int)$userid;
+        fees_gate_helper::require_cleared($userid);
         $user = $DB->get_record('user', ['id' => $userid, 'deleted' => 0], '*', MUST_EXIST);
 
         $rawprofile = student_profile_helper::get_by_userid($userid);

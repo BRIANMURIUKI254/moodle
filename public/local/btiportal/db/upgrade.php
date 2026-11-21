@@ -2936,5 +2936,133 @@ function xmldb_local_btiportal_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026111403, 'local', 'btiportal');
     }
 
+    if ($oldversion < 2026111501) {
+        $dbman = $DB->get_manager();
+
+        $table = new xmldb_table('local_btiportal_student_fees');
+        if (!$dbman->table_exists($table)) {
+            $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+            $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $table->add_field('status', XMLDB_TYPE_CHAR, '16', null, XMLDB_NOTNULL, null, 'unpaid');
+            $table->add_field('paid_at', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('source', XMLDB_TYPE_CHAR, '32', null, XMLDB_NOTNULL, null, '');
+            $table->add_field('reference', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '');
+            $table->add_field('recordedby', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+            $table->add_index('userid_uq', XMLDB_INDEX_UNIQUE, ['userid']);
+            $dbman->create_table($table);
+        }
+
+        $profiletable = new xmldb_table('local_btiportal_student_profile');
+        $field = new xmldb_field('advisoruserid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        if ($dbman->table_exists($profiletable) && !$dbman->field_exists($profiletable, $field)) {
+            $dbman->add_field($profiletable, $field);
+        }
+
+        if (!get_config('local_btiportal', 'feesgate_enabled')) {
+            set_config('feesgate_enabled', 0, 'local_btiportal');
+        }
+
+        upgrade_plugin_savepoint(true, 2026111501, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026111502) {
+        require_once($CFG->dirroot . '/local/btiportal/classes/student_fees_helper.php');
+        \local_btiportal\student_fees_helper::backfill_migration_paid();
+
+        $fns = [
+            'local_btiportal_get_student_context',
+            'local_btiportal_upsert_student',
+            'local_btiportal_set_fees_paid',
+            'local_btiportal_list_fees_message_contacts',
+            'local_btiportal_send_fees_message',
+        ];
+        external_update_descriptions('local_btiportal');
+        foreach ($fns as $fn) {
+            foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+                $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+                if (!$service || !$DB->record_exists('external_functions', ['name' => $fn])) {
+                    continue;
+                }
+                if (!$DB->record_exists('external_services_functions', [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $fn,
+                ])) {
+                    $DB->insert_record('external_services_functions', (object)[
+                        'externalserviceid' => $service->id,
+                        'functionname' => $fn,
+                    ]);
+                }
+            }
+        }
+        \local_btiportal\plugin_build_helper::refresh_git_sha();
+        upgrade_plugin_savepoint(true, 2026111502, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026111503) {
+        $dbman = $DB->get_manager();
+
+        $progtable = new xmldb_table('local_btiportal_programme');
+        $amountfield = new xmldb_field('tuitionfeeamount', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $currencyfield = new xmldb_field('tuitionfeecurrency', XMLDB_TYPE_CHAR, '8', null, XMLDB_NOTNULL, null, 'NGN');
+        if ($dbman->table_exists($progtable)) {
+            if (!$dbman->field_exists($progtable, $amountfield)) {
+                $dbman->add_field($progtable, $amountfield);
+            }
+            if (!$dbman->field_exists($progtable, $currencyfield)) {
+                $dbman->add_field($progtable, $currencyfield);
+            }
+        }
+
+        $ptable = new xmldb_table('local_btiportal_fees_payment_attempt');
+        if (!$dbman->table_exists($ptable)) {
+            $ptable->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+            $ptable->add_field('reference', XMLDB_TYPE_CHAR, '100', null, XMLDB_NOTNULL);
+            $ptable->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $ptable->add_field('programmeid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $ptable->add_field('amount', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $ptable->add_field('currency', XMLDB_TYPE_CHAR, '8', null, XMLDB_NOTNULL);
+            $ptable->add_field('status', XMLDB_TYPE_CHAR, '32', null, XMLDB_NOTNULL, null, 'pending');
+            $ptable->add_field('paystackref', XMLDB_TYPE_CHAR, '100', null, XMLDB_NOTNULL, null, '');
+            $ptable->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $ptable->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $ptable->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+            $ptable->add_index('reference_uq', XMLDB_INDEX_UNIQUE, ['reference']);
+            $ptable->add_index('userid_ix', XMLDB_INDEX_NOTUNIQUE, ['userid']);
+            $dbman->create_table($ptable);
+        }
+
+        if (!get_config('local_btiportal', 'portalurl')) {
+            set_config('portalurl', 'http://localhost:8080', 'local_btiportal');
+        }
+
+        external_update_descriptions('local_btiportal');
+        foreach ([
+            'local_btiportal_initialize_fees_payment',
+            'local_btiportal_verify_fees_payment',
+        ] as $fn) {
+            foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+                $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+                if (!$service || !$DB->record_exists('external_functions', ['name' => $fn])) {
+                    continue;
+                }
+                if (!$DB->record_exists('external_services_functions', [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $fn,
+                ])) {
+                    $DB->insert_record('external_services_functions', (object)[
+                        'externalserviceid' => $service->id,
+                        'functionname' => $fn,
+                    ]);
+                }
+            }
+        }
+
+        \local_btiportal\plugin_build_helper::refresh_git_sha();
+        upgrade_plugin_savepoint(true, 2026111503, 'local', 'btiportal');
+    }
+
     return true;
 }

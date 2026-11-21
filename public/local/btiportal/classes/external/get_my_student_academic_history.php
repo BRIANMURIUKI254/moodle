@@ -10,6 +10,7 @@ use core_external\external_single_structure;
 use core_external\external_value;
 use local_btiportal\academic_api_response;
 use local_btiportal\academic_auth_helper;
+use local_btiportal\fees_gate_helper;
 use local_btiportal\student_academic_history_helper;
 
 /** Self-scoped academic history for the signed-in student. */
@@ -23,6 +24,7 @@ class get_my_student_academic_history extends external_api {
     public static function execute(string $actiontype = ''): array {
         $params = self::validate_parameters(self::execute_parameters(), ['actiontype' => $actiontype]);
         $userid = academic_auth_helper::resolve_student_userid_for_read(0);
+        fees_gate_helper::require_cleared($userid);
         $action = $params['actiontype'] !== '' ? $params['actiontype'] : null;
         $items = student_academic_history_helper::list_for_user($userid, $action);
         return academic_api_response::for_external(academic_api_response::ok([

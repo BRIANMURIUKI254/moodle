@@ -10,6 +10,7 @@ use core_external\external_single_structure;
 use core_external\external_value;
 use local_btiportal\academic_api_response;
 use local_btiportal\academic_auth_helper;
+use local_btiportal\fees_gate_helper;
 use local_btiportal\timetable_helper;
 
 /**
@@ -41,6 +42,7 @@ class list_my_student_timetable_entries extends external_api {
             'courseunitid', 'moodlecourseid', 'academicyearid', 'semesterid', 'status', 'datestart', 'dateend'
         ));
         $userid = academic_auth_helper::resolve_student_userid_for_read(0);
+        fees_gate_helper::require_cleared($userid);
         $items = timetable_helper::list_for_student($userid, [
             'courseunitid' => $courseunitid,
             'moodlecourseid' => $moodlecourseid,

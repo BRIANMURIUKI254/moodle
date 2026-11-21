@@ -10,6 +10,7 @@ use core_external\external_single_structure;
 use core_external\external_value;
 use local_btiportal\academic_api_response;
 use local_btiportal\academic_auth_helper;
+use local_btiportal\fees_gate_helper;
 use local_btiportal\elective_helper;
 use local_btiportal\student_profile_helper;
 
@@ -23,6 +24,7 @@ class list_my_elective_groups extends external_api {
         global $DB;
         self::validate_parameters(self::execute_parameters(), []);
         $userid = academic_auth_helper::resolve_student_userid_for_read(0);
+        fees_gate_helper::require_cleared($userid);
         $profile = student_profile_helper::get_by_userid($userid);
         if (!$profile || (int)$profile['curriculumid'] <= 0) {
             return academic_api_response::for_external(academic_api_response::ok([

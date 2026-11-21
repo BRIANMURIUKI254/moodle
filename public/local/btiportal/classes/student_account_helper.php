@@ -92,6 +92,7 @@ class student_account_helper {
 
         \core\event\user_created::create_from_userid($userid)->trigger();
         service_auth_helper::ensure_portal_authorised($userid);
+        student_fees_helper::ensure_unpaid_row($userid, 0);
 
         $created = $DB->get_record('user', ['id' => $userid], 'id, username, idnumber', MUST_EXIST);
         return [

@@ -10,6 +10,7 @@ use core_external\external_single_structure;
 use core_external\external_value;
 use local_btiportal\assessment_helper;
 use local_btiportal\lecturer_teaching_helper;
+use local_btiportal\fees_gate_helper;
 use local_btiportal\student_assessment_entitlement_helper;
 
 class get_assessments extends external_api {
@@ -26,6 +27,7 @@ class get_assessments extends external_api {
 
     public static function execute(array $courseids = []): array {
         global $USER;
+        fees_gate_helper::require_cleared((int)$USER->id);
         $params = self::validate_parameters(self::execute_parameters(), ['courseids' => $courseids]);
         $ids = array_values(array_unique(array_map('intval', $params['courseids'])));
         foreach ($ids as $courseid) {

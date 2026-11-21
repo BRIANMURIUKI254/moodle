@@ -350,6 +350,7 @@ class timetable_helper {
         if ($studentid <= 0) {
             return [];
         }
+        fees_gate_helper::require_cleared($studentid);
 
         $moodlecourseids = [];
         $courseunitids = [];

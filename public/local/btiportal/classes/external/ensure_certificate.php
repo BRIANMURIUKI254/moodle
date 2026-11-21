@@ -8,6 +8,7 @@ use core_external\external_function_parameters;
 use core_external\external_single_structure;
 use core_external\external_value;
 use local_btiportal\content_helper;
+use local_btiportal\fees_gate_helper;
 
 class ensure_certificate extends external_api {
     public static function execute_parameters(): external_function_parameters {
@@ -19,14 +20,14 @@ class ensure_certificate extends external_api {
 
     public static function execute(int $courseid, string $portalbaseurl = ''): array {
         global $USER;
+        if (!isloggedin() || isguestuser()) {
+            throw new \moodle_exception('noguest');
+        }
+        fees_gate_helper::require_cleared((int)$USER->id);
         self::validate_parameters(self::execute_parameters(), [
             'courseid' => $courseid,
             'portalbaseurl' => $portalbaseurl,
         ]);
-
-        if (!isloggedin() || isguestuser()) {
-            throw new \moodle_exception('noguest');
-        }
 
         $cert = content_helper::ensure_certificate_for_course((int)$USER->id, $courseid, $portalbaseurl);
         if (!$cert) {

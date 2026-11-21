@@ -8,6 +8,7 @@ use core_external\external_function_parameters;
 use core_external\external_single_structure;
 use core_external\external_value;
 use local_btiportal\academic_auth_helper;
+use local_btiportal\fees_gate_helper;
 use local_btiportal\assessment_access_helper;
 
 class get_assessment_access extends external_api {
@@ -18,8 +19,9 @@ class get_assessment_access extends external_api {
     }
 
     public static function execute(int $cmid): array {
-        $params = self::validate_parameters(self::execute_parameters(), ['cmid' => $cmid]);
         $userid = academic_auth_helper::resolve_student_userid_for_read(0);
+        fees_gate_helper::require_cleared($userid);
+        $params = self::validate_parameters(self::execute_parameters(), ['cmid' => $cmid]);
         try {
             return assessment_access_helper::assert_can_access_assessment($userid, (int)$params['cmid'], false);
         } catch (\Throwable $exception) {

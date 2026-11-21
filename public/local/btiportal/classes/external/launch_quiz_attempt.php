@@ -8,7 +8,9 @@ use core_external\external_function_parameters;
 use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
+use local_btiportal\academic_auth_helper;
 use local_btiportal\assessment_helper;
+use local_btiportal\fees_gate_helper;
 
 class launch_quiz_attempt extends external_api {
     public static function execute_parameters(): external_function_parameters {
@@ -35,6 +37,8 @@ class launch_quiz_attempt extends external_api {
         array $preflightdata = []
     ): array {
         global $USER;
+        $userid = academic_auth_helper::resolve_student_userid_for_read(0);
+        fees_gate_helper::require_cleared($userid);
         error_log(sprintf(
             'btiportal launch external userid=%d courseid=%d quizid=%d cmid=%d',
             (int)$USER->id,

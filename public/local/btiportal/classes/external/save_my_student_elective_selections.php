@@ -10,6 +10,7 @@ use core_external\external_single_structure;
 use core_external\external_value;
 use local_btiportal\academic_api_response;
 use local_btiportal\academic_auth_helper;
+use local_btiportal\fees_gate_helper;
 use local_btiportal\elective_helper;
 
 /**
@@ -40,6 +41,8 @@ class save_my_student_elective_selections extends external_api {
         string $status = 'confirmed'
     ): array {
         global $USER;
+        $userid = academic_auth_helper::resolve_student_userid_for_read(0);
+        fees_gate_helper::require_cleared($userid);
         $params = self::validate_parameters(self::execute_parameters(), [
             'electivegroupid' => $electivegroupid,
             'courseunitids' => $courseunitids,
@@ -47,7 +50,6 @@ class save_my_student_elective_selections extends external_api {
             'semesterid' => $semesterid,
             'status' => $status,
         ]);
-        $userid = academic_auth_helper::resolve_student_userid_for_read(0);
         $ids = array_values(array_unique(array_map('intval', $params['courseunitids'])));
         $result = elective_helper::save_student_selections(
             $userid,
