@@ -16,6 +16,7 @@ class webservice_register_helper {
         'local_btiportal_pay_with_saved_card',
         'local_btiportal_list_admin_semester_fees',
         'local_btiportal_upsert_admin_semester_fee',
+        'local_btiportal_delete_admin_semester_fee',
         'local_btiportal_publish_semester_fees',
     ];
 

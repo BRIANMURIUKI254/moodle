@@ -1726,6 +1726,14 @@ $functions = [
         'capabilities'=> 'local/btiportal:managestudentfees',
         'ajax'        => true,
     ],
+    'local_btiportal_delete_admin_semester_fee' => [
+        'classname'   => 'local_btiportal\\external\\delete_admin_semester_fee',
+        'methodname'  => 'execute',
+        'description' => 'Admin: delete a per-course semester fee line.',
+        'type'        => 'write',
+        'capabilities'=> 'local/btiportal:managestudentfees',
+        'ajax'        => true,
+    ],
     'local_btiportal_publish_semester_fees' => [
         'classname'   => 'local_btiportal\\external\\publish_semester_fees',
         'methodname'  => 'execute',

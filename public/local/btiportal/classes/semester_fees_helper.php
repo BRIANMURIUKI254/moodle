@@ -256,9 +256,10 @@ class semester_fees_helper {
         ?array $line,
         bool $schedulepublished
     ): array {
-        $editable = !$schedulepublished && (!$line || (string)$line['status'] === self::STATUS_DRAFT);
-        if ($line && (string)$line['status'] === self::STATUS_PUBLISHED) {
-            $editable = false;
+        unset($schedulepublished);
+        $status = $line ? (string)$line['status'] : '';
+        if ($status === '') {
+            $status = 'not_set';
         }
         return [
             'courseid' => $courseid,
@@ -266,9 +267,9 @@ class semester_fees_helper {
             'coursename' => $name,
             'amount' => $line ? (int)$line['amount'] : 0,
             'currency' => $line ? (string)$line['currency'] : self::DEFAULT_CURRENCY,
-            'status' => $line ? (string)$line['status'] : '',
+            'status' => $status,
             'line_id' => $line ? (int)$line['id'] : 0,
-            'editable' => $editable,
+            'editable' => true,
         ];
     }
 
@@ -324,11 +325,6 @@ class semester_fees_helper {
             return ['ok' => false, 'errors' => [['field' => 'courseid', 'message' => 'Course not found']]];
         }
 
-        $published = self::get_schedule($programmeid, $academicyearid, $semesterid, true);
-        if ($published) {
-            return ['ok' => false, 'errors' => [['field' => '', 'message' => 'Cannot edit lines after publish; re-publish with a new amount if needed']]];
-        }
-
         $existing = $DB->get_record('local_btiportal_semester_fee', [
             'programmeid' => $programmeid,
             'academicyearid' => $academicyearid,
@@ -339,12 +335,12 @@ class semester_fees_helper {
         $currency = strtoupper(trim($currency) ?: self::DEFAULT_CURRENCY);
 
         if ($existing) {
-            if ((string)$existing->status === self::STATUS_PUBLISHED) {
-                return ['ok' => false, 'errors' => [['field' => '', 'message' => 'Cannot edit published lines']]];
-            }
             $existing->amount = $amountminor;
             $existing->currency = $currency;
             $existing->due_at = max(0, $dueat);
+            if ((string)$existing->status !== self::STATUS_PUBLISHED) {
+                $existing->status = self::STATUS_DRAFT;
+            }
             $existing->timemodified = $now;
             $existing->modifiedby = $actorid;
             $DB->update_record('local_btiportal_semester_fee', $existing);
@@ -364,6 +360,40 @@ class semester_fees_helper {
                 'timemodified' => $now,
             ]);
         }
+        return ['ok' => true];
+    }
+
+    /**
+     * Remove a per-course fee line (draft or published).
+     *
+     * @return array{ok:bool,errors?:list}
+     */
+    public static function delete_line(
+        int $programmeid,
+        int $academicyearid,
+        int $semesterid,
+        int $courseid
+    ): array {
+        global $DB;
+
+        if (!self::line_table_exists()) {
+            return ['ok' => false, 'errors' => [['field' => '', 'message' => 'Semester fees not installed']]];
+        }
+        if ($programmeid <= 0 || $semesterid <= 0 || $courseid <= 1) {
+            return ['ok' => false, 'errors' => [['field' => '', 'message' => 'Invalid parameters']]];
+        }
+
+        $deleted = $DB->delete_records('local_btiportal_semester_fee', [
+            'programmeid' => $programmeid,
+            'academicyearid' => $academicyearid,
+            'semesterid' => $semesterid,
+            'courseid' => $courseid,
+        ]);
+
+        if (!$deleted) {
+            return ['ok' => false, 'errors' => [['field' => 'courseid', 'message' => 'No fee line to delete']]];
+        }
+
         return ['ok' => true];
     }
 

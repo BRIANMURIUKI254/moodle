@@ -3261,5 +3261,15 @@ function xmldb_local_btiportal_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026112401, 'local', 'btiportal');
     }
 
+    if ($oldversion < 2026112402) {
+        require_once($CFG->dirroot . '/local/btiportal/classes/webservice_register_helper.php');
+        external_update_descriptions('local_btiportal');
+        \local_btiportal\webservice_register_helper::ensure_portal_functions(
+            \local_btiportal\webservice_register_helper::SEMESTER_FEES_FUNCTIONS
+        );
+        \local_btiportal\plugin_build_helper::refresh_git_sha();
+        upgrade_plugin_savepoint(true, 2026112402, 'local', 'btiportal');
+    }
+
     return true;
 }
