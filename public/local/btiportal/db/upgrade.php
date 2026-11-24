@@ -3064,5 +3064,202 @@ function xmldb_local_btiportal_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026111503, 'local', 'btiportal');
     }
 
+    if ($oldversion < 2026111504) {
+        $dbman = $DB->get_manager();
+
+        $ftable = new xmldb_table('local_btiportal_semester_fee');
+        if (!$dbman->table_exists($ftable)) {
+            $ftable->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+            $ftable->add_field('programmeid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $ftable->add_field('academicyearid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $ftable->add_field('semesterid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $ftable->add_field('courseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $ftable->add_field('amount', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $ftable->add_field('currency', XMLDB_TYPE_CHAR, '8', null, XMLDB_NOTNULL, null, 'KES');
+            $ftable->add_field('due_at', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $ftable->add_field('status', XMLDB_TYPE_CHAR, '16', null, XMLDB_NOTNULL, null, 'draft');
+            $ftable->add_field('createdby', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $ftable->add_field('modifiedby', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $ftable->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $ftable->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $ftable->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+            $ftable->add_index('semester_fee_uq', XMLDB_INDEX_UNIQUE, ['programmeid', 'academicyearid', 'semesterid', 'courseid']);
+            $ftable->add_index('semester_fee_pub_ix', XMLDB_INDEX_NOTUNIQUE, ['programmeid', 'academicyearid', 'semesterid', 'status']);
+            $dbman->create_table($ftable);
+        }
+
+        $stable = new xmldb_table('local_btiportal_student_semester_fees');
+        if (!$dbman->table_exists($stable)) {
+            $stable->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+            $stable->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $stable->add_field('programmeid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $stable->add_field('academicyearid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $stable->add_field('semesterid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $stable->add_field('status', XMLDB_TYPE_CHAR, '16', null, XMLDB_NOTNULL, null, 'unpaid');
+            $stable->add_field('amount', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $stable->add_field('currency', XMLDB_TYPE_CHAR, '8', null, XMLDB_NOTNULL, null, 'KES');
+            $stable->add_field('due_at', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $stable->add_field('paid_at', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $stable->add_field('source', XMLDB_TYPE_CHAR, '32', null, XMLDB_NOTNULL, null, '');
+            $stable->add_field('reference', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '');
+            $stable->add_field('recordedby', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $stable->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $stable->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $stable->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+            $stable->add_index('student_semester_uq', XMLDB_INDEX_UNIQUE, ['userid', 'academicyearid', 'semesterid']);
+            $stable->add_index('student_semester_prog_ix', XMLDB_INDEX_NOTUNIQUE, ['programmeid', 'semesterid', 'status']);
+            $dbman->create_table($stable);
+        }
+
+        $ctable = new xmldb_table('local_btiportal_student_card');
+        if (!$dbman->table_exists($ctable)) {
+            $ctable->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+            $ctable->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $ctable->add_field('authorization_code', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL);
+            $ctable->add_field('brand', XMLDB_TYPE_CHAR, '32', null, XMLDB_NOTNULL, null, '');
+            $ctable->add_field('last4', XMLDB_TYPE_CHAR, '8', null, XMLDB_NOTNULL, null, '');
+            $ctable->add_field('exp_month', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '0');
+            $ctable->add_field('exp_year', XMLDB_TYPE_INTEGER, '6', null, XMLDB_NOTNULL, null, '0');
+            $ctable->add_field('reusable', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0');
+            $ctable->add_field('isdefault', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0');
+            $ctable->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $ctable->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $ctable->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+            $ctable->add_index('student_card_uq', XMLDB_INDEX_UNIQUE, ['userid', 'authorization_code']);
+            $ctable->add_index('student_card_user_ix', XMLDB_INDEX_NOTUNIQUE, ['userid']);
+            $dbman->create_table($ctable);
+        }
+
+        $ptable = new xmldb_table('local_btiportal_fees_payment_attempt');
+        if ($dbman->table_exists($ptable)) {
+            $field = new xmldb_field('academicyearid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            if (!$dbman->field_exists($ptable, $field)) {
+                $dbman->add_field($ptable, $field);
+            }
+            $field = new xmldb_field('semesterid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            if (!$dbman->field_exists($ptable, $field)) {
+                $dbman->add_field($ptable, $field);
+            }
+            $field = new xmldb_field('savecard', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0');
+            if (!$dbman->field_exists($ptable, $field)) {
+                $dbman->add_field($ptable, $field);
+            }
+        }
+
+        require_once($CFG->dirroot . '/local/btiportal/classes/student_semester_fees_helper.php');
+        \local_btiportal\student_semester_fees_helper::migrate_legacy_paid_rows();
+
+        $newfns = [
+            'local_btiportal_get_my_fees_checkout',
+            'local_btiportal_list_my_cards',
+            'local_btiportal_remove_my_card',
+            'local_btiportal_pay_with_saved_card',
+            'local_btiportal_list_admin_semester_fees',
+            'local_btiportal_upsert_admin_semester_fee',
+            'local_btiportal_publish_semester_fees',
+        ];
+        external_update_descriptions('local_btiportal');
+        foreach ($newfns as $fn) {
+            foreach (['bti_portal_api', 'btiportal_local'] as $shortname) {
+                $service = $DB->get_record('external_services', ['shortname' => $shortname], '*', IGNORE_MISSING);
+                if (!$service || !$DB->record_exists('external_functions', ['name' => $fn])) {
+                    continue;
+                }
+                if (!$DB->record_exists('external_services_functions', [
+                    'externalserviceid' => $service->id,
+                    'functionname' => $fn,
+                ])) {
+                    $DB->insert_record('external_services_functions', (object)[
+                        'externalserviceid' => $service->id,
+                        'functionname' => $fn,
+                    ]);
+                }
+            }
+        }
+
+        \local_btiportal\plugin_build_helper::refresh_git_sha();
+        upgrade_plugin_savepoint(true, 2026111504, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026111505) {
+        $dbman = $DB->get_manager();
+
+        $stable = new xmldb_table('local_btiportal_semester_fee_schedule');
+        if (!$dbman->table_exists($stable)) {
+            $stable->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+            $stable->add_field('programmeid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $stable->add_field('academicyearid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $stable->add_field('semesterid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $stable->add_field('amount', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $stable->add_field('currency', XMLDB_TYPE_CHAR, '8', null, XMLDB_NOTNULL, null, 'USD');
+            $stable->add_field('due_at', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $stable->add_field('status', XMLDB_TYPE_CHAR, '16', null, XMLDB_NOTNULL, null, 'draft');
+            $stable->add_field('createdby', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $stable->add_field('modifiedby', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+            $stable->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $stable->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL);
+            $stable->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+            $stable->add_index('semester_schedule_uq', XMLDB_INDEX_UNIQUE, ['programmeid', 'academicyearid', 'semesterid']);
+            $dbman->create_table($stable);
+        }
+
+        if ($dbman->table_exists('local_btiportal_semester_fee')) {
+            $sql = "SELECT programmeid, academicyearid, semesterid,
+                           SUM(amount) AS total, MAX(due_at) AS due_at
+                      FROM {local_btiportal_semester_fee}
+                     WHERE status = 'published'
+                  GROUP BY programmeid, academicyearid, semesterid";
+            $groups = $DB->get_records_sql($sql);
+            $now = time();
+            foreach ($groups as $g) {
+                $exists = $DB->record_exists('local_btiportal_semester_fee_schedule', [
+                    'programmeid' => (int)$g->programmeid,
+                    'academicyearid' => (int)$g->academicyearid,
+                    'semesterid' => (int)$g->semesterid,
+                ]);
+                if ($exists) {
+                    continue;
+                }
+                $DB->insert_record('local_btiportal_semester_fee_schedule', (object) [
+                    'programmeid' => (int)$g->programmeid,
+                    'academicyearid' => (int)$g->academicyearid,
+                    'semesterid' => (int)$g->semesterid,
+                    'amount' => max(0, (int)$g->total),
+                    'currency' => 'USD',
+                    'due_at' => max(0, (int)$g->due_at),
+                    'status' => 'published',
+                    'createdby' => 0,
+                    'modifiedby' => 0,
+                    'timecreated' => $now,
+                    'timemodified' => $now,
+                ]);
+            }
+        }
+
+        external_update_descriptions('local_btiportal');
+        \local_btiportal\plugin_build_helper::refresh_git_sha();
+        upgrade_plugin_savepoint(true, 2026111505, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026111506) {
+        require_once($CFG->dirroot . '/local/btiportal/classes/webservice_register_helper.php');
+        \local_btiportal\webservice_register_helper::ensure_portal_functions(
+            \local_btiportal\webservice_register_helper::SEMESTER_FEES_FUNCTIONS
+        );
+        external_update_descriptions('local_btiportal');
+        \local_btiportal\plugin_build_helper::refresh_git_sha();
+        upgrade_plugin_savepoint(true, 2026111506, 'local', 'btiportal');
+    }
+
+    if ($oldversion < 2026112401) {
+        require_once($CFG->dirroot . '/local/btiportal/classes/webservice_register_helper.php');
+        external_update_descriptions('local_btiportal');
+        \local_btiportal\webservice_register_helper::ensure_portal_functions(
+            \local_btiportal\webservice_register_helper::SEMESTER_FEES_FUNCTIONS
+        );
+        \local_btiportal\plugin_build_helper::refresh_git_sha();
+        upgrade_plugin_savepoint(true, 2026112401, 'local', 'btiportal');
+    }
+
     return true;
 }

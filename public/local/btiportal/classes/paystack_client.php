@@ -49,7 +49,34 @@ class paystack_client {
         return self::request('POST', '/transaction/initialize', $payload, $secret);
     }
 
-  /** @return array{ok:bool,data?:array,message?:string,httpcode?:int} */
+    /** @return array{ok:bool,data?:array,message?:string,httpcode?:int} */
+    public static function charge_authorization(
+        string $email,
+        int $amountminor,
+        string $currency,
+        string $authorizationcode,
+        string $reference
+    ): array {
+        $secret = self::secret_key();
+        if ($secret === '') {
+            return ['ok' => false, 'message' => 'Paystack secret key is not configured'];
+        }
+        if ($amountminor <= 0 || trim($authorizationcode) === '') {
+            return ['ok' => false, 'message' => 'Invalid charge request'];
+        }
+
+        $payload = [
+            'email' => $email,
+            'amount' => $amountminor,
+            'currency' => strtoupper($currency),
+            'authorization_code' => $authorizationcode,
+            'reference' => $reference,
+        ];
+
+        return self::request('POST', '/transaction/charge_authorization', $payload, $secret);
+    }
+
+    /** @return array{ok:bool,data?:array,message?:string,httpcode?:int} */
     public static function verify_transaction(string $reference): array {
         $secret = self::secret_key();
         if ($secret === '') {

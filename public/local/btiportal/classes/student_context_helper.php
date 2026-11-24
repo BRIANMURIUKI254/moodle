@@ -16,9 +16,13 @@ class student_context_helper {
         $user = $DB->get_record('user', ['id' => $userid, 'deleted' => 0], '*', IGNORE_MISSING);
         $raw = student_profile_helper::get_by_userid($userid);
         $profile = self::build_profile_payload($user, $raw);
-        $fees = student_fees_helper::get_status($userid);
-        $programmeid = $raw ? (int)($raw['programmeid'] ?? 0) : 0;
-        $tuition = fees_payment_helper::get_programme_fee($programmeid);
+        $semesterfees = student_semester_fees_helper::current_semester_status($userid);
+        $fees = [
+            'status' => $semesterfees['status'],
+            'paid_at' => (int)$semesterfees['paid_at'],
+            'source' => '',
+            'reference' => '',
+        ];
         $paidmeta = student_fees_helper::get_amount_paid_minor($userid);
         $allowed = fees_gate_helper::access_allowed($userid);
         $reason = null;
@@ -33,10 +37,13 @@ class student_context_helper {
             'fees' => [
                 'status' => $fees['status'],
                 'paid_at' => $fees['paid_at'] > 0 ? $fees['paid_at'] : null,
-                'amount' => $tuition['amount'] > 0 ? $tuition['amount'] : null,
-                'currency' => $tuition['amount'] > 0 ? $tuition['currency'] : null,
+                'amount' => $semesterfees['amount'] > 0 ? $semesterfees['amount'] : null,
+                'currency' => $semesterfees['amount'] > 0 ? $semesterfees['currency'] : null,
+                'due_at' => $semesterfees['due_at'] > 0 ? $semesterfees['due_at'] : null,
                 'amount_paid' => (int)$paidmeta['amount_paid'],
                 'amount_paid_currency' => (string)$paidmeta['currency'],
+                'semester_name' => $profile['semester'] ?? null,
+                'published' => !empty($semesterfees['published']),
             ],
             'access' => [
                 'allowed' => $allowed ? true : false,

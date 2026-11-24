@@ -13,15 +13,29 @@ use local_btiportal\fees_student_auth_helper;
 
 class initialize_fees_payment extends external_api {
     public static function execute_parameters(): external_function_parameters {
-        return new external_function_parameters([]);
+        return new external_function_parameters([
+            'save_card' => new external_value(PARAM_BOOL, 'Store reusable authorization after success', VALUE_DEFAULT, false),
+            'academicyearid' => new external_value(PARAM_INT, 'Target academic year', VALUE_DEFAULT, 0),
+            'semesterid' => new external_value(PARAM_INT, 'Target semester', VALUE_DEFAULT, 0),
+        ]);
     }
 
-    public static function execute(): array {
+    public static function execute(bool $save_card = false, int $academicyearid = 0, int $semesterid = 0): array {
         global $USER;
         academic_auth_helper::require_student_self_read();
         fees_student_auth_helper::require_eligible_student_payer((int)$USER->id);
+        $params = self::validate_parameters(self::execute_parameters(), [
+            'save_card' => $save_card,
+            'academicyearid' => $academicyearid,
+            'semesterid' => $semesterid,
+        ]);
 
-        $result = fees_payment_helper::initialize_for_user((int)$USER->id);
+        $result = fees_payment_helper::initialize_for_user(
+            (int)$USER->id,
+            !empty($params['save_card']),
+            (int)$params['academicyearid'],
+            (int)$params['semesterid']
+        );
         if (!$result['ok']) {
             throw new \invalid_parameter_exception($result['errors'][0]['message'] ?? 'Could not start payment');
         }

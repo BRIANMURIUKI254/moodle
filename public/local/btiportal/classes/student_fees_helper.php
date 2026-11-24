@@ -20,6 +20,72 @@ class student_fees_helper {
         return $DB->get_manager()->table_exists('local_btiportal_student_fees');
     }
 
+    public static function resolve_userid_by_username(string $username): int {
+        global $DB, $CFG;
+        $uname = core_text::strtolower(trim($username));
+        if ($uname === '') {
+            return 0;
+        }
+        $user = $DB->get_record('user', [
+            'username' => $uname,
+            'mnethostid' => $CFG->mnet_localhost_id,
+            'deleted' => 0,
+        ], 'id', IGNORE_MISSING);
+        return $user ? (int)$user->id : 0;
+    }
+
+    /**
+     * Apply a successful payment attempt to the correct semester (idempotent).
+     *
+     * @return array{ok:bool,paid:bool,enrolled:int,reused:int,errors?:list}
+     */
+    public static function mark_paid_for_payment_attempt(\stdClass $attempt, string $source, string $reference, int $recordedby = 0): array {
+        $userid = (int)$attempt->userid;
+        $academicyearid = (int)($attempt->academicyearid ?? 0);
+        $semesterid = (int)($attempt->semesterid ?? 0);
+
+        if ($academicyearid > 0 && $semesterid > 0) {
+            if (student_semester_fees_helper::is_semester_paid($userid, $academicyearid, $semesterid)) {
+                $enrol = self::enrol_programme_container($userid);
+                return [
+                    'ok' => true,
+                    'paid' => false,
+                    'enrolled' => (int)($enrol['enrolled'] ?? 0),
+                    'reused' => (int)($enrol['reused'] ?? 0),
+                ];
+            }
+
+            student_semester_fees_helper::mark_semester_paid(
+                $userid,
+                (int)$attempt->programmeid,
+                $academicyearid,
+                $semesterid,
+                $source,
+                $reference,
+                $recordedby,
+                (int)$attempt->amount,
+                (string)$attempt->currency
+            );
+
+            $enrol = self::enrol_programme_container($userid);
+            $period = student_semester_fees_helper::resolve_current_period($userid);
+            if ($period
+                && (int)$period['academicyearid'] === $academicyearid
+                && (int)$period['semesterid'] === $semesterid) {
+                admissions_fees_callback_helper::notify_fees_paid($userid, $source, $reference);
+            }
+
+            return [
+                'ok' => true,
+                'paid' => true,
+                'enrolled' => (int)($enrol['enrolled'] ?? 0),
+                'reused' => (int)($enrol['reused'] ?? 0),
+            ];
+        }
+
+        return self::mark_paid_and_enrol($userid, $source, $reference, $recordedby);
+    }
+
     public static function get_record(int $userid): ?\stdClass {
         global $DB;
         if ($userid <= 0 || !self::table_exists()) {
@@ -48,7 +114,50 @@ class student_fees_helper {
     }
 
     public static function is_paid(int $userid): bool {
+        if (student_semester_fees_helper::table_exists()) {
+            return student_semester_fees_helper::is_current_semester_paid($userid);
+        }
         return self::get_status($userid)['status'] === self::STATUS_PAID;
+    }
+
+    /**
+     * Keep legacy global row in sync when current semester is marked paid.
+     */
+    public static function sync_legacy_paid_flag(
+        int $userid,
+        string $source = self::SOURCE_MANUAL,
+        string $reference = '',
+        int $recordedby = 0
+    ): void {
+        global $DB;
+        if ($userid <= 0 || !self::table_exists()) {
+            return;
+        }
+        $now = time();
+        $row = self::get_record($userid);
+        if ($row && $row->status === self::STATUS_PAID) {
+            return;
+        }
+        if ($row) {
+            $row->status = self::STATUS_PAID;
+            $row->paid_at = $now;
+            $row->source = $source;
+            $row->reference = trim($reference);
+            $row->recordedby = $recordedby;
+            $row->timemodified = $now;
+            $DB->update_record('local_btiportal_student_fees', $row);
+        } else {
+            $DB->insert_record('local_btiportal_student_fees', (object) [
+                'userid' => $userid,
+                'status' => self::STATUS_PAID,
+                'paid_at' => $now,
+                'source' => $source,
+                'reference' => trim($reference),
+                'recordedby' => $recordedby,
+                'timecreated' => $now,
+                'timemodified' => $now,
+            ]);
+        }
     }
 
     /**
@@ -57,20 +166,20 @@ class student_fees_helper {
     public static function get_amount_paid_minor(int $userid): array {
         global $DB;
 
-        $status = self::get_status($userid);
-        $currency = 'KES';
-        if ($status['status'] !== self::STATUS_PAID) {
-            return ['amount_paid' => 0, 'currency' => $currency];
+        if (!self::is_paid($userid)) {
+            return ['amount_paid' => 0, 'currency' => 'KES'];
         }
 
-        $programmeid = 0;
-        $profile = student_profile_helper::get_by_userid($userid);
-        if ($profile) {
-            $programmeid = (int)($profile['programmeid'] ?? 0);
+        $semester = student_semester_fees_helper::current_semester_status($userid);
+        $currency = $semester['currency'] ?: 'KES';
+        $amount = (int)$semester['amount'];
+
+        $programmeid = fees_payment_helper::resolve_student_programme_id($userid);
+        if ($amount <= 0) {
+            $fee = fees_payment_helper::get_programme_fee($programmeid);
+            $amount = (int)$fee['amount'];
+            $currency = $fee['currency'] ?: $currency;
         }
-        $fee = fees_payment_helper::get_programme_fee($programmeid);
-        $currency = $fee['currency'] ?: $currency;
-        $amount = (int)$fee['amount'];
 
         if (fees_payment_helper::attempts_table_exists()) {
             $attempt = $DB->get_record_sql(
@@ -159,6 +268,7 @@ class student_fees_helper {
 
         $row = self::get_record($userid);
         if ($row && $row->status === self::STATUS_PAID) {
+            student_semester_fees_helper::mark_current_semester_paid($userid, $source, $reference, $recordedby);
             $enrol = self::enrol_programme_container($userid);
             return [
                 'ok' => true,
@@ -189,9 +299,55 @@ class student_fees_helper {
             ]);
         }
 
+        student_semester_fees_helper::mark_current_semester_paid($userid, $source, $reference, $recordedby);
+
         $enrol = self::enrol_programme_container($userid);
         admissions_fees_callback_helper::notify_fees_paid($userid, $source, $reference);
 
+        return [
+            'ok' => true,
+            'paid' => true,
+            'enrolled' => (int)($enrol['enrolled'] ?? 0),
+            'reused' => (int)($enrol['reused'] ?? 0),
+        ];
+    }
+
+    /**
+     * Mark a specific semester paid (manual admin path).
+     */
+    public static function mark_semester_paid_manual(
+        int $userid,
+        int $academicyearid,
+        int $semesterid,
+        string $source,
+        string $reference,
+        int $recordedby
+    ): array {
+        $profile = student_profile_helper::get_by_userid($userid);
+        $programmeid = $profile ? (int)($profile['programmeid'] ?? 0) : 0;
+        if ($programmeid <= 0) {
+            return ['ok' => false, 'errors' => [['field' => 'profile', 'message' => 'No programme on profile']]];
+        }
+
+        student_semester_fees_helper::mark_semester_paid(
+            $userid,
+            $programmeid,
+            $academicyearid,
+            $semesterid,
+            $source,
+            $reference,
+            $recordedby
+        );
+
+        $period = student_semester_fees_helper::resolve_current_period($userid);
+        $markglobal = (!$period)
+            || ((int)$period['academicyearid'] === $academicyearid && (int)$period['semesterid'] === $semesterid);
+
+        if ($markglobal) {
+            return self::mark_paid_and_enrol($userid, $source, $reference, $recordedby);
+        }
+
+        $enrol = self::enrol_programme_container($userid);
         return [
             'ok' => true,
             'paid' => true,

@@ -39,6 +39,9 @@ class get_student_context extends external_api {
                 'currency' => new external_value(PARAM_ALPHA, 'Currency code', VALUE_OPTIONAL),
                 'amount_paid' => new external_value(PARAM_INT, 'Amount paid in minor units', VALUE_DEFAULT, 0),
                 'amount_paid_currency' => new external_value(PARAM_ALPHA, 'Paid amount currency', VALUE_DEFAULT, 'KES'),
+                'due_at' => new external_value(PARAM_INT, 'Due date unix time', VALUE_OPTIONAL),
+                'semester_name' => new external_value(PARAM_TEXT, 'Current semester label', VALUE_OPTIONAL),
+                'published' => new external_value(PARAM_BOOL, 'Published semester fee exists', VALUE_DEFAULT, false),
             ]),
             'access' => new external_single_structure([
                 'allowed' => new external_value(PARAM_BOOL, 'Portal learning access'),
