@@ -12,32 +12,15 @@ class paystack_client {
     /** Currencies Paystack accepts on transaction initialize (merchant must be enabled for code). */
     private const SUPPORTED_CURRENCIES = ['NGN', 'USD', 'GHS', 'ZAR', 'KES', 'XOF'];
 
+    /** @var array{secret:string,public:string,source:string,paired:bool}|null */
+    private static $resolvedkeys = null;
+
     public static function secret_key(): string {
-        $key = trim((string) get_config('local_btiportal', 'paystack_secret_key'));
-        if ($key === '') {
-            $env = getenv('BTI_PAYSTACK_SECRET_KEY');
-            if ($env !== false && trim($env) !== '') {
-                $key = trim($env);
-            }
-        }
-        if ($key === '') {
-            $key = self::enrol_paystack_key('secret');
-        }
-        return $key;
+        return self::resolve_keys()['secret'];
     }
 
     public static function public_key(): string {
-        $key = trim((string) get_config('local_btiportal', 'paystack_public_key'));
-        if ($key === '') {
-            $env = getenv('BTI_PAYSTACK_PUBLIC_KEY');
-            if ($env !== false && trim($env) !== '') {
-                $key = trim($env);
-            }
-        }
-        if ($key === '') {
-            $key = self::enrol_paystack_key('public');
-        }
-        return $key;
+        return self::resolve_keys()['public'];
     }
 
     /**
@@ -62,9 +45,73 @@ class paystack_client {
         return $test !== '' ? $test : trim((string) get_config('enrol_paystack', 'live_publickey'));
     }
 
-    /** Card popup in the portal needs the public key; redirect checkout needs only the secret. */
+    /**
+     * Never mix BTI Portal secret with enrol_paystack public (or the inverse).
+     *
+     * @return array{secret:string,public:string,source:string,paired:bool}
+     */
+    private static function resolve_keys(): array {
+        if (self::$resolvedkeys !== null) {
+            return self::$resolvedkeys;
+        }
+
+        $btisecret = trim((string) get_config('local_btiportal', 'paystack_secret_key'));
+        $btipublic = trim((string) get_config('local_btiportal', 'paystack_public_key'));
+        $envsecret = getenv('BTI_PAYSTACK_SECRET_KEY');
+        if ($envsecret !== false && trim($envsecret) !== '') {
+            $btisecret = trim($envsecret);
+        }
+        $envpublic = getenv('BTI_PAYSTACK_PUBLIC_KEY');
+        if ($envpublic !== false && trim($envpublic) !== '') {
+            $btipublic = trim($envpublic);
+        }
+
+        $bticonfigured = $btisecret !== '' || $btipublic !== '';
+        if ($bticonfigured) {
+            $paired = $btisecret !== '' && $btipublic !== '';
+            self::$resolvedkeys = [
+                'secret' => $btisecret,
+                'public' => $paired ? $btipublic : '',
+                'source' => 'btiportal',
+                'paired' => $paired,
+            ];
+            return self::$resolvedkeys;
+        }
+
+        $enrolsecret = self::enrol_paystack_key('secret');
+        $enrolpublic = self::enrol_paystack_key('public');
+        self::$resolvedkeys = [
+            'secret' => $enrolsecret,
+            'public' => $enrolpublic,
+            'source' => 'enrol_paystack',
+            'paired' => $enrolsecret !== '' && $enrolpublic !== '',
+        ];
+        return self::$resolvedkeys;
+    }
+
+    private static function key_tier(string $key): string {
+        if (preg_match('/^sk_(test|live)_/', $key, $m)) {
+            return $m[1];
+        }
+        if (preg_match('/^pk_(test|live)_/', $key, $m)) {
+            return $m[1];
+        }
+        return '';
+    }
+
+    /** Card popup needs a matched pk_/sk_ pair from the same Paystack account and mode. */
     public static function inline_checkout_ready(): bool {
-        return self::secret_key() !== '' && self::public_key() !== '';
+        $keys = self::resolve_keys();
+        if (empty($keys['paired']) || $keys['secret'] === '' || $keys['public'] === '') {
+            return false;
+        }
+        if (!preg_match('/^pk_(test|live)_/', $keys['public'])) {
+            return false;
+        }
+        if (!preg_match('/^sk_(test|live)_/', $keys['secret'])) {
+            return false;
+        }
+        return self::key_tier($keys['secret']) === self::key_tier($keys['public']);
     }
 
   /** @return array{ok:bool,data?:array,message?:string,httpcode?:int} */

@@ -222,7 +222,7 @@ class fees_payment_helper {
             $DB->set_field('local_btiportal_fees_payment_attempt', 'paystackref', (string)$data['reference'], ['reference' => $reference]);
         }
 
-        return [
+        $out = [
             'ok' => true,
             'reference' => $reference,
             'authorization_url' => (string)($data['authorization_url'] ?? ''),
@@ -230,6 +230,10 @@ class fees_payment_helper {
             'amount' => (int)$checkout['amount'],
             'currency' => (string)$checkout['currency'],
         ];
+        if (paystack_client::inline_checkout_ready()) {
+            $out['paystack_public_key'] = paystack_client::public_key();
+        }
+        return $out;
     }
 
     /**

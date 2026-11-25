@@ -40,13 +40,17 @@ class initialize_fees_payment extends external_api {
             throw new \invalid_parameter_exception($result['errors'][0]['message'] ?? 'Could not start payment');
         }
 
-        return [
+        $response = [
             'reference' => $result['reference'],
             'authorization_url' => $result['authorization_url'],
             'access_code' => (string)($result['access_code'] ?? ''),
             'amount' => (int)$result['amount'],
             'currency' => (string)$result['currency'],
         ];
+        if (!empty($result['paystack_public_key'])) {
+            $response['paystack_public_key'] = (string)$result['paystack_public_key'];
+        }
+        return $response;
     }
 
     public static function execute_returns(): external_single_structure {
@@ -56,6 +60,7 @@ class initialize_fees_payment extends external_api {
             'access_code' => new external_value(PARAM_TEXT, 'Paystack access_code for inline popup'),
             'amount' => new external_value(PARAM_INT, 'Amount in minor currency units'),
             'currency' => new external_value(PARAM_ALPHA, 'ISO currency code'),
+            'paystack_public_key' => new external_value(PARAM_TEXT, 'Matched public key for inline popup', VALUE_OPTIONAL),
         ]);
     }
 }
