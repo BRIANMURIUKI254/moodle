@@ -143,6 +143,9 @@ final class local_btiportal_programme_container_helper_test extends advanced_tes
         ]);
 
         student_course_access_helper::ensure_pathway_enrolments((int)$student->id);
+        $containeraccess = student_course_access_helper::course_access((int)$student->id, (int)$container->id);
+        $this->assertSame(1, $containeraccess['accessible'], $containeraccess['accessmessage'] ?? '');
+        $this->assertSame('ok', $containeraccess['accesscode']);
         $this->assertTrue(is_enrolled(\context_course::instance((int)$container->id), (int)$student->id, '', true));
         $this->assertTrue(is_enrolled(\context_course::instance((int)$sem1course->id), (int)$student->id, '', true));
         $this->assertFalse(is_enrolled(\context_course::instance((int)$sem2course->id), (int)$student->id, '', true));

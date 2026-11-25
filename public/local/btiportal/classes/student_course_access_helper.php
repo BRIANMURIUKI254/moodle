@@ -255,7 +255,88 @@ class student_course_access_helper {
                 return $unit;
             }
         }
-        return null;
+
+        if ($courseid > 1 && student_assessment_entitlement_helper::is_entitled($userid, $courseid)) {
+            return self::unit_from_entitlement($userid, $courseid);
+        }
+
+        return self::unit_for_enrolled_programme_course($userid, $courseid);
+    }
+
+    /**
+     * Build a pathway-shaped unit row from assessment entitlement (programme container, resit, etc.).
+     *
+     * @return array<string,mixed>|null
+     */
+    private static function unit_from_entitlement(int $userid, int $courseid): ?array {
+        $entitlement = student_assessment_entitlement_helper::for_user($userid);
+        $row = $entitlement['courses'][$courseid] ?? null;
+        if (!$row) {
+            return null;
+        }
+        return [
+            'courseunitid' => 0,
+            'code' => (string)($row['unitcode'] ?? ''),
+            'name' => (string)($row['unitname'] ?? ''),
+            'moodlecourseid' => $courseid,
+        ];
+    }
+
+    /**
+     * When curriculum delivery mapping is stale but the student is enrolled on a catalogue unit course.
+     *
+     * @return array<string,mixed>|null
+     */
+    private static function unit_for_enrolled_programme_course(int $userid, int $courseid): ?array {
+        global $DB;
+
+        if ($courseid <= 1) {
+            return null;
+        }
+        $profile = student_profile_helper::get_by_userid($userid);
+        $programmeid = (int)($profile['programmeid'] ?? 0);
+        if ($programmeid <= 0) {
+            return null;
+        }
+
+        try {
+            $context = \context_course::instance($courseid);
+        } catch (\Throwable $e) {
+            return null;
+        }
+        if (!is_enrolled($context, $userid, '', true)) {
+            return null;
+        }
+
+        $container = programme_container_helper::get_container_course($programmeid);
+        if ($container && (int)$container->id === $courseid) {
+            $programme = $DB->get_record('local_btiportal_programme', ['id' => $programmeid], 'code,name', IGNORE_MISSING);
+            return [
+                'courseunitid' => 0,
+                'code' => $programme ? (string)$programme->code : '',
+                'name' => $programme ? (string)$programme->name : format_string((string)$container->fullname),
+                'moodlecourseid' => $courseid,
+            ];
+        }
+
+        $unit = $DB->get_record_sql(
+            "SELECT cu.id, cu.code, cu.name
+               FROM {local_btiportal_course_unit} cu
+              WHERE cu.courseid = ?
+                AND cu.programmeid = ?
+                AND cu.status <> 'archived'",
+            [$courseid, $programmeid],
+            IGNORE_MISSING
+        );
+        if (!$unit) {
+            return null;
+        }
+        return [
+            'courseunitid' => (int)$unit->id,
+            'code' => (string)$unit->code,
+            'name' => (string)$unit->name,
+            'moodlecourseid' => $courseid,
+        ];
     }
 
     private static function format_access_row(array $unit, string $code, int $enrolled, int $accessible, string $message): array {
