@@ -68,6 +68,7 @@ class get_my_fees_checkout extends external_api {
             'bills' => new external_multiple_structure($bill, 'All semester bills'),
             'total_outstanding' => new external_value(PARAM_INT, 'Outstanding minor units'),
             'online_payments_available' => new external_value(PARAM_BOOL, 'Paystack configured'),
+            'paystack_public_key' => new external_value(PARAM_TEXT, 'Paystack public key for inline checkout', VALUE_DEFAULT, ''),
         ]);
     }
 }

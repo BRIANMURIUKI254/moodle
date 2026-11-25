@@ -43,6 +43,7 @@ class initialize_fees_payment extends external_api {
         return [
             'reference' => $result['reference'],
             'authorization_url' => $result['authorization_url'],
+            'access_code' => (string)($result['access_code'] ?? ''),
             'amount' => (int)$result['amount'],
             'currency' => (string)$result['currency'],
         ];
@@ -52,6 +53,7 @@ class initialize_fees_payment extends external_api {
         return new external_single_structure([
             'reference' => new external_value(PARAM_TEXT, 'Payment reference'),
             'authorization_url' => new external_value(PARAM_URL, 'Paystack checkout URL'),
+            'access_code' => new external_value(PARAM_TEXT, 'Paystack access_code for inline popup'),
             'amount' => new external_value(PARAM_INT, 'Amount in minor currency units'),
             'currency' => new external_value(PARAM_ALPHA, 'ISO currency code'),
         ]);

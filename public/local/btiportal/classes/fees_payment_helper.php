@@ -43,7 +43,7 @@ class fees_payment_helper {
      * @return array{amount:int,currency:string,programmeid:int,academicyearid:int,semesterid:int}
      */
     public static function online_payments_available(): bool {
-        return paystack_client::secret_key() !== '';
+        return paystack_client::checkout_ready();
     }
 
     /**
@@ -188,6 +188,7 @@ class fees_payment_helper {
             'ok' => true,
             'reference' => $reference,
             'authorization_url' => (string)($data['authorization_url'] ?? ''),
+            'access_code' => (string)($data['access_code'] ?? ''),
             'amount' => (int)$checkout['amount'],
             'currency' => (string)$checkout['currency'],
         ];
@@ -448,7 +449,7 @@ class fees_payment_helper {
             } else if ($bill['amount'] <= 0) {
                 $bill['pay_disabled_reason'] = 'No fee published yet';
             } else if (!$online) {
-                $bill['pay_disabled_reason'] = 'Online payment is not set up yet — message admin';
+                $bill['pay_disabled_reason'] = 'Card payment is not set up yet. Ask admin to add Paystack public and secret keys in Moodle.';
             } else {
                 $bill['pay_disabled_reason'] = '';
             }
@@ -467,6 +468,7 @@ class fees_payment_helper {
             'bills' => $bills['items'],
             'total_outstanding' => (int)$bills['total_outstanding'],
             'online_payments_available' => $online,
+            'paystack_public_key' => paystack_client::public_key(),
         ];
     }
 

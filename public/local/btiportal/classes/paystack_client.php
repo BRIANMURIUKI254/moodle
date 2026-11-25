@@ -20,6 +20,21 @@ class paystack_client {
         return $key;
     }
 
+    public static function public_key(): string {
+        $key = trim((string) get_config('local_btiportal', 'paystack_public_key'));
+        if ($key === '') {
+            $env = getenv('BTI_PAYSTACK_PUBLIC_KEY');
+            if ($env !== false && trim($env) !== '') {
+                $key = trim($env);
+            }
+        }
+        return $key;
+    }
+
+    public static function checkout_ready(): bool {
+        return self::secret_key() !== '' && self::public_key() !== '';
+    }
+
   /** @return array{ok:bool,data?:array,message?:string,httpcode?:int} */
     public static function initialize_transaction(
         string $email,

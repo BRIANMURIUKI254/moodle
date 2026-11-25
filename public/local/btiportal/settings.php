@@ -29,6 +29,13 @@ if ($hassiteconfig && isset($ADMIN) && $ADMIN->fulltree && isset($settings) && $
         ''
     ));
     $settings->add(new admin_setting_configtext(
+        'local_btiportal/paystack_public_key',
+        get_string('paystack_public_key', 'local_btiportal'),
+        get_string('paystack_public_key_desc', 'local_btiportal'),
+        '',
+        PARAM_RAW_TRIMMED
+    ));
+    $settings->add(new admin_setting_configtext(
         'local_btiportal/admissions_fees_callback_url',
         get_string('admissions_fees_callback_url', 'local_btiportal'),
         get_string('admissions_fees_callback_url_desc', 'local_btiportal'),
