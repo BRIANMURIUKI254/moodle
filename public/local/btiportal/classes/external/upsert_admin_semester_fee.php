@@ -17,7 +17,7 @@ class upsert_admin_semester_fee extends external_api {
             'semesterid' => new external_value(PARAM_INT, 'Semester id'),
             'courseid' => new external_value(PARAM_INT, 'Moodle course id'),
             'amount' => new external_value(PARAM_INT, 'Minor units'),
-            'currency' => new external_value(PARAM_ALPHA, 'Currency', VALUE_DEFAULT, 'USD'),
+            'currency' => new external_value(PARAM_ALPHA, 'Currency', VALUE_DEFAULT, 'KES'),
             'due_at' => new external_value(PARAM_INT, 'Due unix', VALUE_DEFAULT, 0),
         ]);
     }

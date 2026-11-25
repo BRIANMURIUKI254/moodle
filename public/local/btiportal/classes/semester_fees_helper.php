@@ -4,12 +4,12 @@ namespace local_btiportal;
 defined('MOODLE_INTERNAL') || die();
 
 /**
- * Published semester fee schedule (USD) plus optional per-course lines.
+ * Published semester fee schedule plus optional per-course lines.
  */
 class semester_fees_helper {
     public const STATUS_DRAFT = 'draft';
     public const STATUS_PUBLISHED = 'published';
-    public const DEFAULT_CURRENCY = 'USD';
+    public const DEFAULT_CURRENCY = 'KES';
 
     public static function line_table_exists(): bool {
         global $DB;
@@ -26,14 +26,14 @@ class semester_fees_helper {
     }
 
     /**
-     * Parse admin decimal USD (e.g. 450.00) to minor units (cents).
+     * Parse admin decimal amount (e.g. 450.00) to minor units.
      *
      * @return array{ok:bool,amount?:int,errors?:list}
      */
     public static function parse_usd_decimal(string $raw): array {
         $raw = trim($raw);
         if ($raw === '' || !preg_match('/^\d+(\.\d{1,2})?$/', $raw)) {
-            return ['ok' => false, 'errors' => [['field' => 'fee_amount', 'message' => 'Enter a positive USD amount with at most 2 decimal places']]];
+            return ['ok' => false, 'errors' => [['field' => 'fee_amount', 'message' => 'Enter a positive amount with at most 2 decimal places']]];
         }
         $float = (float)$raw;
         if ($float <= 0) {
@@ -459,10 +459,11 @@ class semester_fees_helper {
         }
 
         $now = time();
+        $currency = self::resolve_schedule_currency($programmeid, $academicyearid, $semesterid);
         $existing = self::get_schedule($programmeid, $academicyearid, $semesterid, false);
         if ($existing) {
             $existing->amount = $amountminor;
-            $existing->currency = self::DEFAULT_CURRENCY;
+            $existing->currency = $currency;
             $existing->due_at = max(0, $dueat);
             $existing->status = self::STATUS_PUBLISHED;
             $existing->modifiedby = $actorid;
@@ -474,7 +475,7 @@ class semester_fees_helper {
                 'academicyearid' => $academicyearid,
                 'semesterid' => $semesterid,
                 'amount' => $amountminor,
-                'currency' => self::DEFAULT_CURRENCY,
+                'currency' => $currency,
                 'due_at' => max(0, $dueat),
                 'status' => self::STATUS_PUBLISHED,
                 'createdby' => $actorid,
@@ -507,10 +508,39 @@ class semester_fees_helper {
             $semesterid,
             max(0, $dueat),
             $amountminor,
-            self::DEFAULT_CURRENCY
+            $currency
         );
 
         return ['ok' => true, 'published' => max(1, $publishedlines), 'students' => $students];
+    }
+
+    /**
+     * Currency for a programme semester: keep schedule, else first fee line, else default.
+     */
+    private static function resolve_schedule_currency(int $programmeid, int $academicyearid, int $semesterid): string {
+        global $DB;
+
+        $existing = self::get_schedule($programmeid, $academicyearid, $semesterid, false);
+        if ($existing && trim((string) $existing->currency) !== '') {
+            return strtoupper(trim((string) $existing->currency));
+        }
+
+        if (self::line_table_exists()) {
+            $lines = $DB->get_records_select(
+                'local_btiportal_semester_fee',
+                'programmeid = ? AND academicyearid = ? AND semesterid = ?',
+                [$programmeid, $academicyearid, $semesterid],
+                'id ASC',
+                'id,currency'
+            );
+            foreach ($lines as $line) {
+                if (trim((string) $line->currency) !== '') {
+                    return strtoupper(trim((string) $line->currency));
+                }
+            }
+        }
+
+        return self::DEFAULT_CURRENCY;
     }
 
     /**

@@ -75,6 +75,9 @@ class admissions_fees_callback_helper {
             $headers[] = 'X-BTI-Signature: sha256=' . hash_hmac('sha256', $body, $secret);
         }
 
+        global $CFG;
+        require_once($CFG->libdir . '/filelib.php');
+
         $curl = new \curl();
         $options = [
             'CURLOPT_HTTPHEADER' => $headers,

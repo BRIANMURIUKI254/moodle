@@ -9,6 +9,9 @@ defined('MOODLE_INTERNAL') || die();
 class paystack_client {
     private const API_BASE = 'https://api.paystack.co';
 
+    /** Currencies Paystack accepts on transaction initialize (merchant must be enabled for code). */
+    private const SUPPORTED_CURRENCIES = ['NGN', 'USD', 'GHS', 'ZAR', 'KES', 'XOF'];
+
     public static function secret_key(): string {
         $key = trim((string) get_config('local_btiportal', 'paystack_secret_key'));
         if ($key === '') {
@@ -80,17 +83,25 @@ class paystack_client {
         if ($amountminor <= 0) {
             return ['ok' => false, 'message' => 'Invalid fee amount'];
         }
+        $code = self::normalize_currency($currency);
+        if ($code === '') {
+            return ['ok' => false, 'message' => 'Currency is missing or not supported for Paystack'];
+        }
 
         $payload = [
             'email' => $email,
             'amount' => $amountminor,
-            'currency' => strtoupper($currency),
+            'currency' => $code,
             'reference' => $reference,
             'callback_url' => $callbackurl,
             'metadata' => $metadata,
         ];
 
-        return self::request('POST', '/transaction/initialize', $payload, $secret);
+        try {
+            return self::request('POST', '/transaction/initialize', $payload, $secret);
+        } catch (\moodle_exception $e) {
+            return ['ok' => false, 'message' => $e->getMessage()];
+        }
     }
 
     /** @return array{ok:bool,data?:array,message?:string,httpcode?:int} */
@@ -108,16 +119,24 @@ class paystack_client {
         if ($amountminor <= 0 || trim($authorizationcode) === '') {
             return ['ok' => false, 'message' => 'Invalid charge request'];
         }
+        $code = self::normalize_currency($currency);
+        if ($code === '') {
+            return ['ok' => false, 'message' => 'Currency is missing or not supported for Paystack'];
+        }
 
         $payload = [
             'email' => $email,
             'amount' => $amountminor,
-            'currency' => strtoupper($currency),
+            'currency' => $code,
             'authorization_code' => $authorizationcode,
             'reference' => $reference,
         ];
 
-        return self::request('POST', '/transaction/charge_authorization', $payload, $secret);
+        try {
+            return self::request('POST', '/transaction/charge_authorization', $payload, $secret);
+        } catch (\moodle_exception $e) {
+            return ['ok' => false, 'message' => $e->getMessage()];
+        }
     }
 
     /** @return array{ok:bool,data?:array,message?:string,httpcode?:int} */
@@ -127,7 +146,19 @@ class paystack_client {
             return ['ok' => false, 'message' => 'Paystack secret key is not configured'];
         }
         $ref = rawurlencode($reference);
-        return self::request('GET', '/transaction/verify/' . $ref, null, $secret);
+        try {
+            return self::request('GET', '/transaction/verify/' . $ref, null, $secret);
+        } catch (\moodle_exception $e) {
+            return ['ok' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    private static function normalize_currency(string $currency): string {
+        $code = strtoupper(trim($currency));
+        if ($code === '' || !in_array($code, self::SUPPORTED_CURRENCIES, true)) {
+            return '';
+        }
+        return $code;
     }
 
     /**
@@ -135,6 +166,9 @@ class paystack_client {
      * @return array{ok:bool,data?:array,message?:string,httpcode?:int}
      */
     private static function request(string $method, string $path, ?array $body, string $secret): array {
+        global $CFG;
+        require_once($CFG->libdir . '/filelib.php');
+
         $url = self::API_BASE . $path;
         $curl = new \curl();
         $headers = [
@@ -151,6 +185,17 @@ class paystack_client {
             $response = $curl->post($url, json_encode($body), $options);
         } else {
             $response = $curl->get($url, [], $options);
+        }
+        $errno = (int) $curl->get_errno();
+        if ($response === false || $errno !== 0) {
+            $errtext = trim((string) $curl->error);
+            throw new \moodle_exception(
+                'paystackhttpfailed',
+                'local_btiportal',
+                '',
+                null,
+                $errtext !== '' ? $errtext : 'Could not reach Paystack'
+            );
         }
         $info = $curl->get_info();
         $httpcode = (int)($info['http_code'] ?? 0);

@@ -15,7 +15,7 @@ class publish_semester_fees extends external_api {
             'programmeid' => new external_value(PARAM_INT, 'Programme id'),
             'academicyearid' => new external_value(PARAM_INT, 'Academic year id'),
             'semesterid' => new external_value(PARAM_INT, 'Semester id'),
-            'fee_amount' => new external_value(PARAM_TEXT, 'USD decimal amount e.g. 450.00'),
+            'fee_amount' => new external_value(PARAM_TEXT, 'Decimal amount e.g. 450.00'),
             'due_at' => new external_value(PARAM_INT, 'Due unix', VALUE_DEFAULT, 0),
         ]);
     }
