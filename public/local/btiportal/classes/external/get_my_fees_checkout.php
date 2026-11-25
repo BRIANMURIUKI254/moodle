@@ -71,6 +71,10 @@ class get_my_fees_checkout extends external_api {
             'paystack_public_key' => new external_value(PARAM_TEXT, 'Paystack public key for inline checkout', VALUE_DEFAULT, ''),
             'paystack_inline_ready' => new external_value(PARAM_BOOL, 'Popup checkout ready'),
             'first_time_payer' => new external_value(PARAM_BOOL, 'No prior semester tuition paid'),
+            'current_period' => new external_single_structure([
+                'academicyearid' => new external_value(PARAM_INT, 'Profile academic year id'),
+                'semesterid' => new external_value(PARAM_INT, 'Profile semester id'),
+            ], 'Student profile period', VALUE_OPTIONAL),
         ]);
     }
 }

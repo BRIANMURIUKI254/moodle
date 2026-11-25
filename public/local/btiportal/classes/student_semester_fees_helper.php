@@ -457,6 +457,70 @@ class student_semester_fees_helper {
             ];
         }
 
+        self::ensure_current_period_bill_row($userid, $period, $items, $total, $currency);
+
         return ['items' => $items, 'total_outstanding' => $total, 'currency' => $currency];
+    }
+
+    /**
+     * Profile semester may have published fees while list_published_periods only lists other cohorts.
+     */
+  private static function ensure_current_period_bill_row(
+        int $userid,
+        array $period,
+        array &$items,
+        int &$total,
+        string &$currency
+    ): void {
+        global $DB;
+
+        $ay = (int)$period['academicyearid'];
+        $sem = (int)$period['semesterid'];
+        $prog = (int)$period['programmeid'];
+
+        foreach ($items as &$item) {
+            if ((int)$item['academicyearid'] === $ay && (int)$item['semesterid'] === $sem) {
+                $item['is_current'] = true;
+                return;
+            }
+        }
+        unset($item);
+
+        $fee = semester_fees_helper::compute_student_total($prog, $ay, $sem);
+        if (empty($fee['published']) || (int)$fee['amount'] <= 0) {
+            return;
+        }
+
+        $year = $DB->get_record('local_btiportal_academic_year', ['id' => $ay], 'id,name', IGNORE_MISSING);
+        $sement = $DB->get_record('local_btiportal_semester', ['id' => $sem], 'id,name', IGNORE_MISSING);
+        $row = self::get_row($userid, $ay, $sem);
+        $paid = $row && (string)$row->status === self::STATUS_PAID;
+        $dueat = (int)($row->due_at ?? $fee['due_at']);
+        $amount = (int)($row && $row->amount > 0 ? $row->amount : $fee['amount']);
+        $cur = strtoupper((string)($row->currency ?? $fee['currency'] ?? $currency));
+
+        $displaystatus = 'Unpaid';
+        if ($paid) {
+            $displaystatus = 'Paid';
+        } else if ($dueat > 0 && $dueat < time()) {
+            $displaystatus = 'Overdue';
+        }
+
+        if (!$paid) {
+            $total += $amount;
+        }
+        $currency = $cur;
+
+        $items[] = [
+            'academicyearid' => $ay,
+            'semesterid' => $sem,
+            'academic_year' => $year ? (string)$year->name : '',
+            'semester' => $sement ? (string)$sement->name : '',
+            'amount' => $amount,
+            'currency' => $cur,
+            'due_at' => $dueat,
+            'status' => $displaystatus,
+            'is_current' => true,
+        ];
     }
 }

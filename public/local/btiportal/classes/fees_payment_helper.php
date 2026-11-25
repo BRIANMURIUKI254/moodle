@@ -529,6 +529,10 @@ class fees_payment_helper {
             'paystack_public_key' => paystack_client::public_key(),
             'paystack_inline_ready' => paystack_client::inline_checkout_ready(),
             'first_time_payer' => $firsttime,
+            'current_period' => $period ? [
+                'academicyearid' => (int)$period['academicyearid'],
+                'semesterid' => (int)$period['semesterid'],
+            ] : null,
         ];
     }
 
