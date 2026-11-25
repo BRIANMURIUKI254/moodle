@@ -31,7 +31,8 @@ class paystack_client {
         return $key;
     }
 
-    public static function checkout_ready(): bool {
+    /** Card popup in the portal needs the public key; redirect checkout needs only the secret. */
+    public static function inline_checkout_ready(): bool {
         return self::secret_key() !== '' && self::public_key() !== '';
     }
 

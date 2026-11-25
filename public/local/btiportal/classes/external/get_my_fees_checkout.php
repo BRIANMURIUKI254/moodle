@@ -69,6 +69,8 @@ class get_my_fees_checkout extends external_api {
             'total_outstanding' => new external_value(PARAM_INT, 'Outstanding minor units'),
             'online_payments_available' => new external_value(PARAM_BOOL, 'Paystack configured'),
             'paystack_public_key' => new external_value(PARAM_TEXT, 'Paystack public key for inline checkout', VALUE_DEFAULT, ''),
+            'paystack_inline_ready' => new external_value(PARAM_BOOL, 'Popup checkout ready'),
+            'first_time_payer' => new external_value(PARAM_BOOL, 'No prior semester tuition paid'),
         ]);
     }
 }

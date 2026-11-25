@@ -43,7 +43,39 @@ class fees_payment_helper {
      * @return array{amount:int,currency:string,programmeid:int,academicyearid:int,semesterid:int}
      */
     public static function online_payments_available(): bool {
-        return paystack_client::checkout_ready();
+        return paystack_client::secret_key() !== '';
+    }
+
+    /**
+     * New admissions (no semester paid yet) may only pay the semester on their profile.
+     */
+    public static function is_first_time_tuition_payer(int $userid): bool {
+        global $DB;
+
+        if (student_semester_fees_helper::table_exists()) {
+            $paid = $DB->count_records_select(
+                'local_btiportal_student_semester_fees',
+                'userid = ? AND status = ?',
+                [$userid, student_semester_fees_helper::STATUS_PAID]
+            );
+            if ($paid > 0) {
+                return false;
+            }
+        }
+        return !student_fees_helper::is_paid($userid);
+    }
+
+    public static function may_pay_semester_online(int $userid, int $academicyearid, int $semesterid): bool {
+        $period = student_semester_fees_helper::resolve_current_period($userid);
+        if (!$period || $academicyearid <= 0 || $semesterid <= 0) {
+            return false;
+        }
+        $iscurrent = (int)$period['academicyearid'] === $academicyearid
+            && (int)$period['semesterid'] === $semesterid;
+        if (self::is_first_time_tuition_payer($userid)) {
+            return $iscurrent;
+        }
+        return true;
     }
 
     /**
@@ -134,6 +166,12 @@ class fees_payment_helper {
         if (self::semester_already_paid($userid, (int)$checkout['academicyearid'], (int)$checkout['semesterid'])) {
             return ['ok' => false, 'errors' => [['field' => '', 'message' => 'Fees already paid for this semester']]];
         }
+        if (!self::may_pay_semester_online($userid, (int)$checkout['academicyearid'], (int)$checkout['semesterid'])) {
+            return ['ok' => false, 'errors' => [[
+                'field' => '',
+                'message' => 'New students can only pay the current semester online. Message admin for other balances.',
+            ]]];
+        }
 
         $user = $DB->get_record('user', ['id' => $userid, 'deleted' => 0], '*', MUST_EXIST);
         $reference = self::make_reference($userid);
@@ -222,6 +260,12 @@ class fees_payment_helper {
         }
         if (self::semester_already_paid($userid, (int)$checkout['academicyearid'], (int)$checkout['semesterid'])) {
             return ['ok' => false, 'errors' => [['field' => '', 'message' => 'Fees already paid for this semester']]];
+        }
+        if (!self::may_pay_semester_online($userid, (int)$checkout['academicyearid'], (int)$checkout['semesterid'])) {
+            return ['ok' => false, 'errors' => [[
+                'field' => '',
+                'message' => 'New students can only pay the current semester online. Message admin for other balances.',
+            ]]];
         }
 
         $user = $DB->get_record('user', ['id' => $userid, 'deleted' => 0], '*', MUST_EXIST);
@@ -442,14 +486,28 @@ class fees_payment_helper {
 
         $bills = student_semester_fees_helper::list_bills_for_user($userid);
         $online = self::online_payments_available();
+        $firsttime = self::is_first_time_tuition_payer($userid);
         foreach ($bills['items'] as &$bill) {
-            $bill['can_pay_online'] = $online && $bill['status'] !== 'Paid';
+            $maypay = self::may_pay_semester_online(
+                $userid,
+                (int)$bill['academicyearid'],
+                (int)$bill['semesterid']
+            );
+            $bill['can_pay_online'] = $online
+                && $bill['status'] !== 'Paid'
+                && (int)$bill['amount'] > 0
+                && $maypay;
             if ($bill['status'] === 'Paid') {
                 $bill['pay_disabled_reason'] = '';
             } else if ($bill['amount'] <= 0) {
                 $bill['pay_disabled_reason'] = 'No fee published yet';
             } else if (!$online) {
-                $bill['pay_disabled_reason'] = 'Card payment is not set up yet. Ask admin to add Paystack public and secret keys in Moodle.';
+                $bill['pay_disabled_reason'] = 'Card payment is not set up yet. Ask admin to add the Paystack secret key in Moodle.';
+            } else if (!$maypay && $firsttime && empty($bill['is_current'])) {
+                $bill['pay_disabled_reason'] =
+                    'As a new student, pay only your current semester online. Message admin for other semesters.';
+            } else if (!$maypay) {
+                $bill['pay_disabled_reason'] = 'This semester cannot be paid online.';
             } else {
                 $bill['pay_disabled_reason'] = '';
             }
@@ -469,6 +527,8 @@ class fees_payment_helper {
             'total_outstanding' => (int)$bills['total_outstanding'],
             'online_payments_available' => $online,
             'paystack_public_key' => paystack_client::public_key(),
+            'paystack_inline_ready' => paystack_client::inline_checkout_ready(),
+            'first_time_payer' => $firsttime,
         ];
     }
 
