@@ -17,6 +17,9 @@ class paystack_client {
                 $key = trim($env);
             }
         }
+        if ($key === '') {
+            $key = self::enrol_paystack_key('secret');
+        }
         return $key;
     }
 
@@ -28,7 +31,32 @@ class paystack_client {
                 $key = trim($env);
             }
         }
+        if ($key === '') {
+            $key = self::enrol_paystack_key('public');
+        }
         return $key;
+    }
+
+    /**
+     * Reuse Paystack API keys from enrol_paystack when BTI Portal keys are blank.
+     *
+     * @param 'secret'|'public' $kind
+     */
+    private static function enrol_paystack_key(string $kind): string {
+        $mode = strtolower(trim((string) get_config('enrol_paystack', 'mode')));
+        $live = $mode === 'live' || $mode === '1';
+        if ($kind === 'secret') {
+            if ($live) {
+                return trim((string) get_config('enrol_paystack', 'live_secretkey'));
+            }
+            $test = trim((string) get_config('enrol_paystack', 'test_secretkey'));
+            return $test !== '' ? $test : trim((string) get_config('enrol_paystack', 'live_secretkey'));
+        }
+        if ($live) {
+            return trim((string) get_config('enrol_paystack', 'live_publickey'));
+        }
+        $test = trim((string) get_config('enrol_paystack', 'test_publickey'));
+        return $test !== '' ? $test : trim((string) get_config('enrol_paystack', 'live_publickey'));
     }
 
     /** Card popup in the portal needs the public key; redirect checkout needs only the secret. */
