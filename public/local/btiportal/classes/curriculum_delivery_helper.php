@@ -39,9 +39,11 @@ class curriculum_delivery_helper {
         ];
 
         foreach ($years as $year) {
+            $year = self::normalise_node($year, ['curriculumid' => $curriculumid, 'description' => '', 'status' => 'active', 'timecreated' => 0, 'timemodified' => 0, 'usermodified' => 0]);
             $semesters = curriculum_structure_helper::list_semesters((int)$year['id'], null);
             $semnodes = [];
             foreach ($semesters as $sem) {
+                $sem = self::normalise_node($sem, ['curriculumyearid' => (int)$year['id'], 'curriculumid' => $curriculumid, 'yearnumber' => (int)$year['yearnumber'], 'description' => '', 'status' => 'active', 'timecreated' => 0, 'timemodified' => 0, 'usermodified' => 0]);
                 $units = self::list_course_units_for_semester(
                     $curriculumid,
                     (int)$year['yearnumber'],
@@ -385,6 +387,18 @@ class curriculum_delivery_helper {
             }
         }
         return $alerts;
+    }
+
+    /**
+     * Fill missing/null keys with defaults so the web service response always matches its declared structure.
+     */
+    private static function normalise_node(array $node, array $defaults): array {
+        foreach ($defaults as $key => $value) {
+            if (!isset($node[$key])) {
+                $node[$key] = $value;
+            }
+        }
+        return $node;
     }
 
     public static function enriched_unit_structure_keys(): array {
