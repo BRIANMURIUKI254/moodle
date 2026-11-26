@@ -33,16 +33,90 @@ class paystack_client {
         $live = $mode === 'live' || $mode === '1';
         if ($kind === 'secret') {
             if ($live) {
-                return trim((string) get_config('enrol_paystack', 'live_secretkey'));
+                $key = self::first_valid_secret(self::enrol_config_candidates('live', 'secret'));
+                if ($key !== '') {
+                    return $key;
+                }
             }
-            $test = trim((string) get_config('enrol_paystack', 'test_secretkey'));
-            return $test !== '' ? $test : trim((string) get_config('enrol_paystack', 'live_secretkey'));
+            $test = self::first_valid_secret(self::enrol_config_candidates('test', 'secret'));
+            if ($test !== '') {
+                return $test;
+            }
+            return self::first_valid_secret(self::enrol_config_candidates('live', 'secret'));
         }
         if ($live) {
-            return trim((string) get_config('enrol_paystack', 'live_publickey'));
+            $key = self::first_valid_public(self::enrol_config_candidates('live', 'public'));
+            if ($key !== '') {
+                return $key;
+            }
         }
-        $test = trim((string) get_config('enrol_paystack', 'test_publickey'));
-        return $test !== '' ? $test : trim((string) get_config('enrol_paystack', 'live_publickey'));
+        $test = self::first_valid_public(self::enrol_config_candidates('test', 'public'));
+        if ($test !== '') {
+            return $test;
+        }
+        return self::first_valid_public(self::enrol_config_candidates('live', 'public'));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function enrol_config_candidates(string $tier, string $kind): array {
+        $plugin = 'enrol_paystack';
+        if ($kind === 'secret') {
+            if ($tier === 'test') {
+                return ['test_secretkey', 'test_secret_key', 'secretkey_test', 'testsecretkey'];
+            }
+            return ['live_secretkey', 'live_secret_key', 'secretkey_live', 'secretkey'];
+        }
+        if ($tier === 'test') {
+            return ['test_publickey', 'test_public_key', 'publickey_test', 'testpublickey'];
+        }
+        return ['live_publickey', 'live_public_key', 'publickey_live', 'publickey'];
+    }
+
+    /**
+     * @param list<string> $names
+     */
+    private static function first_valid_secret(array $names): string {
+        foreach ($names as $name) {
+            $raw = self::normalize_stored_key((string) get_config('enrol_paystack', $name));
+            if (self::is_valid_secret($raw)) {
+                return $raw;
+            }
+        }
+        return '';
+    }
+
+    /**
+     * @param list<string> $names
+     */
+    private static function first_valid_public(array $names): string {
+        foreach ($names as $name) {
+            $raw = self::normalize_stored_key((string) get_config('enrol_paystack', $name));
+            if (self::is_valid_public($raw)) {
+                return $raw;
+            }
+        }
+        return '';
+    }
+
+    private static function normalize_stored_key(string $key): string {
+        $key = trim($key);
+        if ($key === '') {
+            return '';
+        }
+        if (preg_match('/^\*+$/', $key)) {
+            return '';
+        }
+        return $key;
+    }
+
+    private static function is_valid_secret(string $key): bool {
+        return $key !== '' && preg_match('/^sk_(test|live)_\S+/', $key) === 1;
+    }
+
+    private static function is_valid_public(string $key): bool {
+        return $key !== '' && preg_match('/^pk_(test|live)_\S+/', $key) === 1;
     }
 
     /**
@@ -55,20 +129,19 @@ class paystack_client {
             return self::$resolvedkeys;
         }
 
-        $btisecret = trim((string) get_config('local_btiportal', 'paystack_secret_key'));
-        $btipublic = trim((string) get_config('local_btiportal', 'paystack_public_key'));
+        $btisecret = self::normalize_stored_key((string) get_config('local_btiportal', 'paystack_secret_key'));
+        $btipublic = self::normalize_stored_key((string) get_config('local_btiportal', 'paystack_public_key'));
         $envsecret = getenv('BTI_PAYSTACK_SECRET_KEY');
         if ($envsecret !== false && trim($envsecret) !== '') {
-            $btisecret = trim($envsecret);
+            $btisecret = self::normalize_stored_key(trim($envsecret));
         }
         $envpublic = getenv('BTI_PAYSTACK_PUBLIC_KEY');
         if ($envpublic !== false && trim($envpublic) !== '') {
-            $btipublic = trim($envpublic);
+            $btipublic = self::normalize_stored_key(trim($envpublic));
         }
 
-        $bticonfigured = $btisecret !== '' || $btipublic !== '';
-        if ($bticonfigured) {
-            $paired = $btisecret !== '' && $btipublic !== '';
+        if (self::is_valid_secret($btisecret)) {
+            $paired = self::is_valid_public($btipublic);
             self::$resolvedkeys = [
                 'secret' => $btisecret,
                 'public' => $paired ? $btipublic : '',
@@ -127,9 +200,8 @@ class paystack_client {
         if ($secret === '') {
             return ['ok' => false, 'message' => 'Paystack secret key is not configured'];
         }
-        $secretcheck = self::describe_secret_key_problem($secret);
-        if ($secretcheck !== '') {
-            return ['ok' => false, 'message' => $secretcheck];
+        if (!self::is_valid_secret($secret)) {
+            return ['ok' => false, 'message' => self::describe_secret_key_problem($secret)];
         }
         if ($amountminor <= 0) {
             return ['ok' => false, 'message' => 'Invalid fee amount'];
@@ -268,13 +340,16 @@ class paystack_client {
     }
 
     private static function describe_secret_key_problem(string $secret): string {
-        if (preg_match('/^sk_(test|live)_/', $secret)) {
+        if (self::is_valid_secret($secret)) {
             return '';
         }
         if (preg_match('/^pk_/', $secret)) {
             return 'The Paystack secret slot contains a public key (pk_…). Paste sk_test_… from Paystack → Settings → API Keys & Webhooks into BTI Portal or Paystack enrolment.';
         }
-        return 'Paystack secret key is missing or not a valid sk_test_… / sk_live_… value. Set matching test keys in Site administration → Plugins → Local plugins → BTI Portal (or Paystack enrolment), then purge Moodle caches.';
+        if ($secret !== '') {
+            return 'BTI Portal has a Paystack secret value that is not sk_test_… or sk_live_… (often a stale password field). Clear both Paystack fields under Local plugins → BTI Portal and save, then set keys only under Paystack enrolment—or paste a fresh sk_test_ key, purge caches.';
+        }
+        return 'Paystack secret key is not configured. Set sk_test_… under Site administration → Plugins → Local plugins → BTI Portal or Paystack enrolment (test mode), then purge Moodle caches.';
     }
 
     private static function humanize_paystack_error(string $message): string {
