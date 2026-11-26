@@ -127,6 +127,10 @@ class paystack_client {
         if ($secret === '') {
             return ['ok' => false, 'message' => 'Paystack secret key is not configured'];
         }
+        $secretcheck = self::describe_secret_key_problem($secret);
+        if ($secretcheck !== '') {
+            return ['ok' => false, 'message' => $secretcheck];
+        }
         if ($amountminor <= 0) {
             return ['ok' => false, 'message' => 'Invalid fee amount'];
         }
@@ -252,14 +256,32 @@ class paystack_client {
             return ['ok' => false, 'message' => 'Invalid Paystack response', 'httpcode' => $httpcode];
         }
         if (empty($decoded['status'])) {
+            $message = (string)($decoded['message'] ?? 'Paystack request failed');
             return [
                 'ok' => false,
-                'message' => (string)($decoded['message'] ?? 'Paystack request failed'),
+                'message' => self::humanize_paystack_error($message),
                 'httpcode' => $httpcode,
                 'data' => $decoded,
             ];
         }
         return ['ok' => true, 'data' => $decoded['data'] ?? $decoded, 'httpcode' => $httpcode];
+    }
+
+    private static function describe_secret_key_problem(string $secret): string {
+        if (preg_match('/^sk_(test|live)_/', $secret)) {
+            return '';
+        }
+        if (preg_match('/^pk_/', $secret)) {
+            return 'The Paystack secret slot contains a public key (pk_…). Paste sk_test_… from Paystack → Settings → API Keys & Webhooks into BTI Portal or Paystack enrolment.';
+        }
+        return 'Paystack secret key is missing or not a valid sk_test_… / sk_live_… value. Set matching test keys in Site administration → Plugins → Local plugins → BTI Portal (or Paystack enrolment), then purge Moodle caches.';
+    }
+
+    private static function humanize_paystack_error(string $message): string {
+        if (stripos($message, 'invalid key') === false) {
+            return $message;
+        }
+        return 'Paystack rejected your API secret (Invalid key). Use sk_test_ and pk_test_ from the same Paystack test account in Moodle. If BTI Portal has only one key filled in, clear it or add both keys—do not mix BTI secret with enrol Paystack public.';
     }
 
     public static function verify_webhook_signature(string $rawbody, ?string $signatureheader): bool {
