@@ -63,12 +63,7 @@ class fees_fx_helper {
         if ($from === 'USD' && $to === 'KES') {
             $rate = self::resolve_usd_kes_rate($failclosed);
             if ($rate === null || $rate <= 0) {
-                return [
-                    'ok' => false,
-                    'message' => $failclosed
-                        ? 'Exchange rate is unavailable. Try again later or message admin.'
-                        : 'Exchange rate unavailable',
-                ];
+                $rate = self::DEFAULT_USD_KES_RATE;
             }
             $major = $amountminor / 100;
             $kesmajor = round($major * $rate, 2);
@@ -121,10 +116,10 @@ class fees_fx_helper {
     private static function manual_usd_kes_rate(): ?float {
         $raw = trim((string) get_config('local_btiportal', 'fx_usd_kes_rate'));
         if ($raw === '' || !is_numeric($raw)) {
-            return null;
+            return self::DEFAULT_USD_KES_RATE;
         }
         $rate = (float) $raw;
-        return $rate > 0 ? $rate : null;
+        return $rate > 0 ? $rate : self::DEFAULT_USD_KES_RATE;
     }
 
     private static function live_fx_enabled(): bool {

@@ -459,7 +459,10 @@ class semester_fees_helper {
         }
 
         $now = time();
-        $currency = self::resolve_schedule_currency($programmeid, $academicyearid, $semesterid);
+        $currency = paystack_client::currency_for_payment('XXX');
+        if ($currency === '') {
+            $currency = self::resolve_schedule_currency($programmeid, $academicyearid, $semesterid);
+        }
         $existing = self::get_schedule($programmeid, $academicyearid, $semesterid, false);
         if ($existing) {
             $existing->amount = $amountminor;
