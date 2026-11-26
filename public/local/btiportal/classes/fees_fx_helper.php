@@ -10,6 +10,9 @@ class fees_fx_helper {
     private const CACHE_KEY_RATE = 'fx_usd_kes_rate';
     private const CACHE_KEY_TIME = 'fx_usd_kes_fetched';
 
+    /** Last resort when live FX and admin fallback are unavailable (BTI Portal → USD to KES fallback rate). */
+    private const DEFAULT_USD_KES_RATE = 129.5;
+
     public static function collection_currency(): string {
         return paystack_client::currency_for_payment('XXX');
     }
@@ -86,8 +89,7 @@ class fees_fx_helper {
     /**
      * @return float|null USD→KES (1 USD = X KES)
      */
-    private static function resolve_usd_kes_rate(bool $allowstalecache): ?float {
-        $manual = self::manual_usd_kes_rate();
+    private static function resolve_usd_kes_rate(bool $failclosed): ?float {
         if (self::live_fx_enabled()) {
             $live = self::fetch_live_usd_kes_rate();
             if ($live !== null && $live > 0) {
@@ -99,10 +101,21 @@ class fees_fx_helper {
         if ($cached !== null && $cached > 0) {
             return $cached;
         }
+        $manual = self::manual_usd_kes_rate();
         if ($manual !== null && $manual > 0) {
             return $manual;
         }
-        return $allowstalecache ? null : null;
+        $env = getenv('BTI_FX_USD_KES_RATE');
+        if ($env !== false && trim($env) !== '' && is_numeric(trim($env))) {
+            $rate = (float) trim($env);
+            if ($rate > 0) {
+                return $rate;
+            }
+        }
+        if (!$failclosed) {
+            return self::DEFAULT_USD_KES_RATE;
+        }
+        return self::DEFAULT_USD_KES_RATE;
     }
 
     private static function manual_usd_kes_rate(): ?float {
@@ -115,8 +128,11 @@ class fees_fx_helper {
     }
 
     private static function live_fx_enabled(): bool {
-        $flag = (int) get_config('local_btiportal', 'fx_live_enabled');
-        if ($flag === 1) {
+        $flag = get_config('local_btiportal', 'fx_live_enabled');
+        if ($flag === false || $flag === null || $flag === '') {
+            return true;
+        }
+        if ((int) $flag === 1) {
             return true;
         }
         $env = getenv('BTI_FX_LIVE_ENABLED');
@@ -140,8 +156,8 @@ class fees_fx_helper {
         $curl = new \curl();
         $options = ['CURLOPT_TIMEOUT' => 8, 'CURLOPT_RETURNTRANSFER' => true];
         $response = $curl->get('https://open.er-api.com/v6/latest/USD', [], $options);
-        if ($response === false) {
-            return null;
+        if ($response === false || (int) $curl->get_errno() !== 0) {
+            return self::cached_usd_kes_rate();
         }
         $decoded = json_decode((string) $response, true);
         if (!is_array($decoded) || empty($decoded['rates']['KES'])) {

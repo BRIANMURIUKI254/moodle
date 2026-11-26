@@ -46,7 +46,7 @@ if ($hassiteconfig && isset($ADMIN) && $ADMIN->fulltree && isset($settings) && $
         'local_btiportal/fx_usd_kes_rate',
         get_string('fx_usd_kes_rate', 'local_btiportal'),
         get_string('fx_usd_kes_rate_desc', 'local_btiportal'),
-        '',
+        '129.50',
         PARAM_RAW_TRIMMED
     ));
     $settings->add(new admin_setting_configcheckbox(
