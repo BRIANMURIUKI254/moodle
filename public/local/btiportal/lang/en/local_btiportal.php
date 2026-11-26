@@ -181,7 +181,13 @@ $string['paystack_secret_key_desc'] = 'Test or live secret key for server-side P
 $string['paystack_public_key'] = 'Paystack public key';
 $string['paystack_public_key_desc'] = 'Test or live public key (pk_…) for Paystack inline card checkout in the student portal. You may also set BTI_PAYSTACK_PUBLIC_KEY in the Moodle server environment. If empty, keys from the Paystack enrolment plugin are used.';
 $string['paystack_collection_currency'] = 'Paystack collection currency';
-$string['paystack_collection_currency_desc'] = 'ISO currency sent to Paystack (default KES for Kenyan merchants). Use this when published fees still show USD but Paystack only accepts KES. Amounts are unchanged; republish fees in this currency when possible.';
+$string['paystack_collection_currency_desc'] = 'ISO currency sent to Paystack (default KES for Kenyan merchants). Stored USD fees are converted to this currency for display and payment.';
+$string['fx_usd_kes_rate'] = 'USD to KES fallback rate';
+$string['fx_usd_kes_rate_desc'] = 'Used when live FX is unavailable (e.g. 129.50 means 1 USD = 129.50 KES). Students are not shown the rate.';
+$string['fx_live_enabled'] = 'Use live USD/KES rate';
+$string['fx_live_enabled_desc'] = 'Fetches from open.er-api.com and caches the rate. If live and cache fail, the fallback rate is used; if that is empty, online pay is blocked.';
+$string['fx_cache_hours'] = 'FX cache lifetime (hours)';
+$string['fx_cache_hours_desc'] = 'How long to reuse the last live USD/KES rate before refreshing.';
 $string['paystackhttpfailed'] = 'Paystack request failed: {$a}';
 $string['admissions_fees_callback_url'] = 'Admissions CMS fees callback URL';
 $string['admissions_fees_callback_url_desc'] = 'HTTPS URL for Admissions CMS (POST). Fired when tuition is newly marked paid (Paystack, set_fees_paid, or CLI).';

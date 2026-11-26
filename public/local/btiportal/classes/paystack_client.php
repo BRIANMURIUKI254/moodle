@@ -329,7 +329,7 @@ class paystack_client {
      */
     public static function currency_for_payment(string $feecurrency): string {
         $raw = trim((string) get_config('local_btiportal', 'paystack_collection_currency'));
-        if ($raw === '') {
+        if ($raw === '' || $feecurrency === 'XXX') {
             $raw = self::DEFAULT_COLLECTION_CURRENCY;
         }
         $override = self::normalize_currency($raw);

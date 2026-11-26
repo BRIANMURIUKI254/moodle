@@ -178,19 +178,21 @@ class fees_payment_helper {
         $now = time();
 
         $feecurrency = (string) $checkout['currency'];
-        $paycurrency = paystack_client::currency_for_payment($feecurrency);
-        if ($paycurrency === '') {
+        $prepared = fees_fx_helper::prepare_paystack_minor((int) $checkout['amount'], $feecurrency);
+        if (empty($prepared['ok'])) {
             return ['ok' => false, 'errors' => [[
                 'field' => 'currency',
-                'message' => 'No valid currency for Paystack. Set Paystack collection currency (KES) in BTI Portal settings.',
+                'message' => (string) ($prepared['message'] ?? 'Could not prepare payment amount'),
             ]]];
         }
+        $payamount = (int) $prepared['amount'];
+        $paycurrency = (string) $prepared['currency'];
 
         $record = (object) [
             'reference' => $reference,
             'userid' => $userid,
             'programmeid' => $programmeid,
-            'amount' => (int)$checkout['amount'],
+            'amount' => $payamount,
             'currency' => $paycurrency,
             'status' => self::STATUS_PENDING,
             'paystackref' => '',
@@ -208,7 +210,7 @@ class fees_payment_helper {
 
         $init = paystack_client::initialize_transaction(
             (string)$user->email,
-            (int)$checkout['amount'],
+            $payamount,
             $paycurrency,
             $reference,
             self::portal_return_url($reference),
@@ -237,7 +239,7 @@ class fees_payment_helper {
             'reference' => $reference,
             'authorization_url' => (string)($data['authorization_url'] ?? ''),
             'access_code' => (string)($data['access_code'] ?? ''),
-            'amount' => (int)$checkout['amount'],
+            'amount' => $payamount,
             'currency' => $paycurrency,
         ];
         $public = paystack_client::public_key();
@@ -287,19 +289,21 @@ class fees_payment_helper {
         $reference = self::make_reference($userid);
         $now = time();
         $feecurrency = (string) $checkout['currency'];
-        $paycurrency = paystack_client::currency_for_payment($feecurrency);
-        if ($paycurrency === '') {
+        $prepared = fees_fx_helper::prepare_paystack_minor((int) $checkout['amount'], $feecurrency);
+        if (empty($prepared['ok'])) {
             return ['ok' => false, 'errors' => [[
                 'field' => 'currency',
-                'message' => 'No valid currency for Paystack. Set Paystack collection currency (KES) in BTI Portal settings.',
+                'message' => (string) ($prepared['message'] ?? 'Could not prepare payment amount'),
             ]]];
         }
+        $payamount = (int) $prepared['amount'];
+        $paycurrency = (string) $prepared['currency'];
 
         $record = (object) [
             'reference' => $reference,
             'userid' => $userid,
             'programmeid' => (int)$checkout['programmeid'],
-            'amount' => (int)$checkout['amount'],
+            'amount' => $payamount,
             'currency' => $paycurrency,
             'status' => self::STATUS_PENDING,
             'paystackref' => '',
@@ -317,7 +321,7 @@ class fees_payment_helper {
 
         $charge = paystack_client::charge_authorization(
             (string)$user->email,
-            (int)$checkout['amount'],
+            $payamount,
             $paycurrency,
             (string)$card->authorization_code,
             $reference
@@ -537,17 +541,30 @@ class fees_payment_helper {
         }
         unset($bill);
 
+        $presented = fees_fx_helper::present_bills(
+            $bills['items'],
+            (int) $bills['total_outstanding'],
+            (string) $bills['currency']
+        );
+        $semamount = (int) $semester['amount'];
+        $semcurrency = (string) $semester['currency'];
+        $sempres = fees_fx_helper::present_minor($semamount, $semcurrency);
+        if (!empty($sempres['ok'])) {
+            $semamount = (int) $sempres['amount'];
+            $semcurrency = (string) $sempres['currency'];
+        }
+
         return [
             'status' => (string)$semester['status'],
-            'amount' => (int)$semester['amount'],
-            'currency' => (string)$semester['currency'],
+            'amount' => $semamount,
+            'currency' => $semcurrency,
             'due_at' => (int)$semester['due_at'],
             'published' => !empty($semester['published']),
             'lines' => $lines,
             'cards' => $cards,
             'default_card_id' => $defaultid,
-            'bills' => $bills['items'],
-            'total_outstanding' => (int)$bills['total_outstanding'],
+            'bills' => $presented['items'],
+            'total_outstanding' => (int) $presented['total_outstanding'],
             'online_payments_available' => $online,
             'paystack_public_key' => paystack_client::public_key(),
             'paystack_inline_ready' => paystack_client::inline_checkout_ready(),

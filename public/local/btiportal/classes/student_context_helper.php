@@ -17,6 +17,14 @@ class student_context_helper {
         $raw = student_profile_helper::get_by_userid($userid);
         $profile = self::build_profile_payload($user, $raw);
         $semesterfees = student_semester_fees_helper::current_semester_status($userid);
+        $sempresent = fees_fx_helper::present_minor(
+            (int) $semesterfees['amount'],
+            (string) $semesterfees['currency']
+        );
+        if (!empty($sempresent['ok'])) {
+            $semesterfees['amount'] = (int) $sempresent['amount'];
+            $semesterfees['currency'] = (string) $sempresent['currency'];
+        }
         $fees = [
             'status' => $semesterfees['status'],
             'paid_at' => (int)$semesterfees['paid_at'],
