@@ -12,6 +12,9 @@ class paystack_client {
     /** Currencies Paystack accepts on transaction initialize (merchant must be enabled for code). */
     private const SUPPORTED_CURRENCIES = ['NGN', 'USD', 'GHS', 'ZAR', 'KES', 'XOF'];
 
+    /** Used when paystack_collection_currency is not saved in Moodle yet (get_config is empty). */
+    public const DEFAULT_COLLECTION_CURRENCY = 'KES';
+
     /** @var array{secret:string,public:string,source:string,paired:bool}|null */
     private static $resolvedkeys = null;
 
@@ -325,9 +328,11 @@ class paystack_client {
      * Currency code sent to Paystack (may differ from fee schedule when legacy USD rows exist).
      */
     public static function currency_for_payment(string $feecurrency): string {
-        $override = self::normalize_currency(
-            (string) get_config('local_btiportal', 'paystack_collection_currency')
-        );
+        $raw = trim((string) get_config('local_btiportal', 'paystack_collection_currency'));
+        if ($raw === '') {
+            $raw = self::DEFAULT_COLLECTION_CURRENCY;
+        }
+        $override = self::normalize_currency($raw);
         if ($override !== '') {
             return $override;
         }
