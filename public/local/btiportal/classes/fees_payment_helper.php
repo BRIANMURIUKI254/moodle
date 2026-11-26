@@ -177,12 +177,21 @@ class fees_payment_helper {
         $reference = self::make_reference($userid);
         $now = time();
 
+        $feecurrency = (string) $checkout['currency'];
+        $paycurrency = paystack_client::currency_for_payment($feecurrency);
+        if ($paycurrency === '') {
+            return ['ok' => false, 'errors' => [[
+                'field' => 'currency',
+                'message' => 'No valid currency for Paystack. Set Paystack collection currency (KES) in BTI Portal settings.',
+            ]]];
+        }
+
         $record = (object) [
             'reference' => $reference,
             'userid' => $userid,
             'programmeid' => $programmeid,
             'amount' => (int)$checkout['amount'],
-            'currency' => (string)$checkout['currency'],
+            'currency' => $paycurrency,
             'status' => self::STATUS_PENDING,
             'paystackref' => '',
             'timecreated' => $now,
@@ -200,7 +209,7 @@ class fees_payment_helper {
         $init = paystack_client::initialize_transaction(
             (string)$user->email,
             (int)$checkout['amount'],
-            (string)$checkout['currency'],
+            $paycurrency,
             $reference,
             self::portal_return_url($reference),
             [
@@ -209,6 +218,7 @@ class fees_payment_helper {
                 'academicyearid' => (int)$checkout['academicyearid'],
                 'semesterid' => (int)$checkout['semesterid'],
                 'save_card' => $savecard ? 1 : 0,
+                'fee_currency' => $feecurrency,
             ]
         );
 
@@ -228,10 +238,11 @@ class fees_payment_helper {
             'authorization_url' => (string)($data['authorization_url'] ?? ''),
             'access_code' => (string)($data['access_code'] ?? ''),
             'amount' => (int)$checkout['amount'],
-            'currency' => (string)$checkout['currency'],
+            'currency' => $paycurrency,
         ];
-        if (paystack_client::inline_checkout_ready()) {
-            $out['paystack_public_key'] = paystack_client::public_key();
+        $public = paystack_client::public_key();
+        if ($public !== '' && preg_match('/^pk_(test|live)_/', $public)) {
+            $out['paystack_public_key'] = $public;
         }
         return $out;
     }
@@ -275,13 +286,21 @@ class fees_payment_helper {
         $user = $DB->get_record('user', ['id' => $userid, 'deleted' => 0], '*', MUST_EXIST);
         $reference = self::make_reference($userid);
         $now = time();
+        $feecurrency = (string) $checkout['currency'];
+        $paycurrency = paystack_client::currency_for_payment($feecurrency);
+        if ($paycurrency === '') {
+            return ['ok' => false, 'errors' => [[
+                'field' => 'currency',
+                'message' => 'No valid currency for Paystack. Set Paystack collection currency (KES) in BTI Portal settings.',
+            ]]];
+        }
 
         $record = (object) [
             'reference' => $reference,
             'userid' => $userid,
             'programmeid' => (int)$checkout['programmeid'],
             'amount' => (int)$checkout['amount'],
-            'currency' => (string)$checkout['currency'],
+            'currency' => $paycurrency,
             'status' => self::STATUS_PENDING,
             'paystackref' => '',
             'timecreated' => $now,
@@ -299,7 +318,7 @@ class fees_payment_helper {
         $charge = paystack_client::charge_authorization(
             (string)$user->email,
             (int)$checkout['amount'],
-            (string)$checkout['currency'],
+            $paycurrency,
             (string)$card->authorization_code,
             $reference
         );
@@ -506,7 +525,7 @@ class fees_payment_helper {
             } else if ($bill['amount'] <= 0) {
                 $bill['pay_disabled_reason'] = 'No fee published yet';
             } else if (!$online) {
-                $bill['pay_disabled_reason'] = 'Card payment is not set up yet. Ask admin to add the Paystack secret key in Moodle.';
+                $bill['pay_disabled_reason'] = paystack_client::payment_unavailable_message();
             } else if (!$maypay && $firsttime && empty($bill['is_current'])) {
                 $bill['pay_disabled_reason'] =
                     'As a new student, pay only your current semester online. Message admin for other semesters.';

@@ -23,6 +23,42 @@ class paystack_client {
         return self::resolve_keys()['public'];
     }
 
+    /** Non-empty values in Moodle that are not sk_test_/sk_live_ secrets (wrong paste). */
+    public static function has_stored_but_invalid_keys(): bool {
+        if (self::secret_key() !== '') {
+            return false;
+        }
+        $bti = self::normalize_stored_key((string) get_config('local_btiportal', 'paystack_secret_key'));
+        if ($bti !== '') {
+            return true;
+        }
+        foreach (self::enrol_config_candidates('test', 'secret') as $name) {
+            $raw = self::normalize_stored_key((string) get_config('enrol_paystack', $name));
+            if ($raw !== '') {
+                return true;
+            }
+        }
+        foreach (self::enrol_config_candidates('live', 'secret') as $name) {
+            $raw = self::normalize_stored_key((string) get_config('enrol_paystack', $name));
+            if ($raw !== '') {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static function payment_unavailable_message(): string {
+        if (self::secret_key() !== '') {
+            return '';
+        }
+        if (self::has_stored_but_invalid_keys()) {
+            return 'Paystack keys in Moodle are not valid API keys. In Paystack dashboard → Settings → API Keys, copy sk_test_… '
+                . 'and pk_test_… (full strings starting with sk_test_ / pk_test_), paste into Paystack enrolment or BTI Portal, '
+                . 'then purge caches. Do not paste hex hashes or webhook secrets.';
+        }
+        return 'Card payment is not set up yet. Ask admin to add the Paystack secret key in Moodle.';
+    }
+
     /**
      * Reuse Paystack API keys from enrol_paystack when BTI Portal keys are blank.
      *
@@ -210,6 +246,7 @@ class paystack_client {
         if ($code === '') {
             return ['ok' => false, 'message' => 'Currency is missing or not supported for Paystack'];
         }
+        $feecode = self::normalize_currency((string) ($metadata['fee_currency'] ?? ''));
 
         $payload = [
             'email' => $email,
@@ -221,7 +258,7 @@ class paystack_client {
         ];
 
         try {
-            return self::request('POST', '/transaction/initialize', $payload, $secret);
+            return self::request('POST', '/transaction/initialize', $payload, $secret, $feecode);
         } catch (\moodle_exception $e) {
             return ['ok' => false, 'message' => $e->getMessage()];
         }
@@ -285,10 +322,29 @@ class paystack_client {
     }
 
     /**
+     * Currency code sent to Paystack (may differ from fee schedule when legacy USD rows exist).
+     */
+    public static function currency_for_payment(string $feecurrency): string {
+        $override = self::normalize_currency(
+            (string) get_config('local_btiportal', 'paystack_collection_currency')
+        );
+        if ($override !== '') {
+            return $override;
+        }
+        return self::normalize_currency($feecurrency);
+    }
+
+    /**
      * @param array<string,mixed>|null $body
      * @return array{ok:bool,data?:array,message?:string,httpcode?:int}
      */
-    private static function request(string $method, string $path, ?array $body, string $secret): array {
+    private static function request(
+        string $method,
+        string $path,
+        ?array $body,
+        string $secret,
+        string $feeschedulecurrency = ''
+    ): array {
         global $CFG;
         require_once($CFG->libdir . '/filelib.php');
 
@@ -331,7 +387,7 @@ class paystack_client {
             $message = (string)($decoded['message'] ?? 'Paystack request failed');
             return [
                 'ok' => false,
-                'message' => self::humanize_paystack_error($message),
+                'message' => self::humanize_paystack_error($message, $feeschedulecurrency),
                 'httpcode' => $httpcode,
                 'data' => $decoded,
             ];
@@ -352,7 +408,16 @@ class paystack_client {
         return 'Paystack secret key is not configured. Set sk_test_… under Site administration → Plugins → Local plugins → BTI Portal or Paystack enrolment (test mode), then purge Moodle caches.';
     }
 
-    private static function humanize_paystack_error(string $message): string {
+    private static function humanize_paystack_error(string $message, string $feeschedulecurrency = ''): string {
+        if (stripos($message, 'currency not supported') !== false) {
+            $hint = 'Set Site administration → Plugins → Local plugins → BTI Portal → Paystack collection currency to KES '
+                . '(Kenyan Paystack accounts usually cannot charge USD). Republish semester fees in KES when you can.';
+            if ($feeschedulecurrency !== '') {
+                $hint = 'Fees are stored as ' . strtoupper($feeschedulecurrency)
+                    . ' but Paystack rejected that currency. ' . $hint;
+            }
+            return $hint;
+        }
         if (stripos($message, 'invalid key') === false) {
             return $message;
         }
