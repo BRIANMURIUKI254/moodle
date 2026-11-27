@@ -50,6 +50,9 @@ class initialize_fees_payment extends external_api {
         if (!empty($result['paystack_public_key'])) {
             $response['paystack_public_key'] = (string)$result['paystack_public_key'];
         }
+        if (!empty($result['paystack_channels']) && is_array($result['paystack_channels'])) {
+            $response['paystack_channels'] = $result['paystack_channels'];
+        }
         return $response;
     }
 
@@ -61,6 +64,11 @@ class initialize_fees_payment extends external_api {
             'amount' => new external_value(PARAM_INT, 'Amount in minor currency units'),
             'currency' => new external_value(PARAM_ALPHA, 'ISO currency code'),
             'paystack_public_key' => new external_value(PARAM_TEXT, 'Matched public key for inline popup', VALUE_OPTIONAL),
+            'paystack_channels' => new \core_external\external_multiple_structure(
+                new external_value(PARAM_ALPHA, 'Paystack channel'),
+                'Checkout payment channels',
+                VALUE_OPTIONAL
+            ),
         ]);
     }
 }

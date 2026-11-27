@@ -63,6 +63,13 @@ if ($hassiteconfig && isset($ADMIN) && $ADMIN->fulltree && isset($settings) && $
         PARAM_INT
     ));
     $settings->add(new admin_setting_configtext(
+        'local_btiportal/paystack_channels',
+        get_string('paystack_channels', 'local_btiportal'),
+        get_string('paystack_channels_desc', 'local_btiportal'),
+        'card,mobile_money',
+        PARAM_RAW_TRIMMED
+    ));
+    $settings->add(new admin_setting_configtext(
         'local_btiportal/admissions_fees_callback_url',
         get_string('admissions_fees_callback_url', 'local_btiportal'),
         get_string('admissions_fees_callback_url_desc', 'local_btiportal'),

@@ -259,6 +259,10 @@ class paystack_client {
             'callback_url' => $callbackurl,
             'metadata' => $metadata,
         ];
+        $channels = self::checkout_channels();
+        if ($channels !== []) {
+            $payload['channels'] = $channels;
+        }
 
         try {
             return self::request('POST', '/transaction/initialize', $payload, $secret, $feecode);
@@ -327,6 +331,39 @@ class paystack_client {
     /**
      * Currency code sent to Paystack (may differ from fee schedule when legacy USD rows exist).
      */
+    /**
+     * @return list<string>
+     */
+    public static function checkout_channels(): array {
+        $raw = trim((string) get_config('local_btiportal', 'paystack_channels'));
+        if ($raw === '') {
+            return ['card', 'mobile_money'];
+        }
+        $parts = preg_split('/[\s,;]+/', strtolower($raw));
+        $allowed = [
+            'card',
+            'bank',
+            'mobile_money',
+            'ussd',
+            'qr',
+            'bank_transfer',
+        ];
+        $out = [];
+        foreach ($parts as $part) {
+            $part = trim($part);
+            if ($part !== '' && in_array($part, $allowed, true)) {
+                $out[] = $part;
+            }
+        }
+        if ($out === []) {
+            $out = ['card', 'mobile_money'];
+        }
+        if (!in_array('card', $out, true)) {
+            array_unshift($out, 'card');
+        }
+        return array_values(array_unique($out));
+    }
+
     public static function currency_for_payment(string $feecurrency): string {
         $raw = trim((string) get_config('local_btiportal', 'paystack_collection_currency'));
         if ($raw === '' || $feecurrency === 'XXX') {
