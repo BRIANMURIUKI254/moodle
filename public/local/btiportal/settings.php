@@ -66,7 +66,7 @@ if ($hassiteconfig && isset($ADMIN) && $ADMIN->fulltree && isset($settings) && $
         'local_btiportal/paystack_channels',
         get_string('paystack_channels', 'local_btiportal'),
         get_string('paystack_channels_desc', 'local_btiportal'),
-        'card,mobile_money',
+        'auto',
         PARAM_RAW_TRIMMED
     ));
     $settings->add(new admin_setting_configtext(

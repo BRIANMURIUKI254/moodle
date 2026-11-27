@@ -246,7 +246,8 @@ class fees_payment_helper {
         if ($public !== '' && preg_match('/^pk_(test|live)_/', $public)) {
             $out['paystack_public_key'] = $public;
         }
-        $out['paystack_channels'] = paystack_client::checkout_channels();
+        $ch = paystack_client::checkout_channels();
+        $out['paystack_channels'] = $ch ?? ['card', 'mobile_money'];
         return $out;
     }
 

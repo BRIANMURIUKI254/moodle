@@ -260,7 +260,7 @@ class paystack_client {
             'metadata' => $metadata,
         ];
         $channels = self::checkout_channels();
-        if ($channels !== []) {
+        if ($channels !== null && $channels !== []) {
             $payload['channels'] = $channels;
         }
 
@@ -332,14 +332,16 @@ class paystack_client {
      * Currency code sent to Paystack (may differ from fee schedule when legacy USD rows exist).
      */
     /**
-     * @return list<string>
+     * Channels for transaction/initialize, or null to omit (Paystack uses dashboard-enabled methods).
+     *
+     * @return list<string>|null
      */
-    public static function checkout_channels(): array {
-        $raw = trim((string) get_config('local_btiportal', 'paystack_channels'));
-        if ($raw === '') {
-            return ['card', 'mobile_money'];
+    public static function checkout_channels(): ?array {
+        $raw = strtolower(trim((string) get_config('local_btiportal', 'paystack_channels')));
+        if ($raw === '' || $raw === 'auto' || $raw === '*') {
+            return null;
         }
-        $parts = preg_split('/[\s,;]+/', strtolower($raw));
+        $parts = preg_split('/[\s,;]+/', $raw);
         $allowed = [
             'card',
             'bank',
