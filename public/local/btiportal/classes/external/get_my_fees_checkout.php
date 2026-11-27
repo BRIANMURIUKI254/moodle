@@ -21,7 +21,22 @@ class get_my_fees_checkout extends external_api {
         global $USER;
         academic_auth_helper::require_student_self_read();
         fees_student_auth_helper::require_eligible_student_payer((int)$USER->id);
-        return fees_payment_helper::checkout_context_for_user((int)$USER->id);
+        $data = fees_payment_helper::checkout_context_for_user((int)$USER->id);
+        if (!isset($data['default_card_id']) || $data['default_card_id'] === null) {
+            unset($data['default_card_id']);
+        } else {
+            $data['default_card_id'] = (int) $data['default_card_id'];
+        }
+        if (empty($data['current_period']) || !is_array($data['current_period'])) {
+            unset($data['current_period']);
+        }
+        $data['paystack_public_key'] = (string) ($data['paystack_public_key'] ?? '');
+        foreach ($data['lines'] as $i => $line) {
+            if (!isset($line['due_at']) || $line['due_at'] === null) {
+                unset($data['lines'][$i]['due_at']);
+            }
+        }
+        return $data;
     }
 
     public static function execute_returns(): external_single_structure {

@@ -40,35 +40,24 @@ class initialize_fees_payment extends external_api {
             throw new \invalid_parameter_exception($result['errors'][0]['message'] ?? 'Could not start payment');
         }
 
-        $response = [
-            'reference' => $result['reference'],
-            'authorization_url' => $result['authorization_url'],
-            'access_code' => (string)($result['access_code'] ?? ''),
-            'amount' => (int)$result['amount'],
-            'currency' => (string)$result['currency'],
+        return [
+            'reference' => (string) $result['reference'],
+            'authorization_url' => (string) ($result['authorization_url'] ?? ''),
+            'access_code' => (string) ($result['access_code'] ?? ''),
+            'amount' => (int) $result['amount'],
+            'currency' => strtoupper((string) $result['currency']),
+            'paystack_public_key' => (string) ($result['paystack_public_key'] ?? ''),
         ];
-        if (!empty($result['paystack_public_key'])) {
-            $response['paystack_public_key'] = (string)$result['paystack_public_key'];
-        }
-        if (!empty($result['paystack_channels']) && is_array($result['paystack_channels'])) {
-            $response['paystack_channels'] = $result['paystack_channels'];
-        }
-        return $response;
     }
 
     public static function execute_returns(): external_single_structure {
         return new external_single_structure([
             'reference' => new external_value(PARAM_TEXT, 'Payment reference'),
-            'authorization_url' => new external_value(PARAM_URL, 'Paystack checkout URL'),
+            'authorization_url' => new external_value(PARAM_TEXT, 'Paystack checkout URL'),
             'access_code' => new external_value(PARAM_TEXT, 'Paystack access_code for inline popup'),
             'amount' => new external_value(PARAM_INT, 'Amount in minor currency units'),
             'currency' => new external_value(PARAM_ALPHA, 'ISO currency code'),
-            'paystack_public_key' => new external_value(PARAM_TEXT, 'Matched public key for inline popup', VALUE_OPTIONAL),
-            'paystack_channels' => new \core_external\external_multiple_structure(
-                new external_value(PARAM_ALPHA, 'Paystack channel'),
-                'Checkout payment channels',
-                VALUE_OPTIONAL
-            ),
+            'paystack_public_key' => new external_value(PARAM_TEXT, 'Matched public key for inline popup', VALUE_DEFAULT, ''),
         ]);
     }
 }
